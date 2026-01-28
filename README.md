@@ -179,10 +179,20 @@ This handles:
 core_generate_package_config()
 ```
 
-This generates:
-- `<PROJECT_NAME>Config.cmake` for use with `find_package()`
-- `<PROJECT_NAME>ConfigVersion.cmake` with SameMajorVersion compatibility
-- Automatic inclusion of CMake modules and target files
+**What this does:** Makes your project installable and usable by other CMake projects via `find_package()`.
+
+After installing your project, other developers can use it like this:
+```cmake
+find_package(MyProject REQUIRED)
+target_link_libraries(their_app PRIVATE MyProject::my_library)
+```
+
+This function automatically generates:
+- `<PROJECT_NAME>Config.cmake` - Tells CMake how to find and use your project
+- `<PROJECT_NAME>ConfigVersion.cmake` - Enables version checking (uses SameMajorVersion compatibility)
+- Includes all your CMake modules and export targets
+
+**Note:** You only need this if you're creating a library that other projects will use via `find_package()`. Skip this for standalone applications.
 
 ## Complete Example
 
@@ -244,7 +254,3 @@ MyProject/
 │   └── implementation.cpp
 └── ...
 ```
-
-## License
-
-See LICENSE file for details.
