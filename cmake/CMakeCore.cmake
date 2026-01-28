@@ -213,7 +213,17 @@ function(core_generate_package_config)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
+    # Add FetchContent support
+    string(APPEND config_content "
+    # If using FetchContent, use the source tree's cmake directory
+    if(NOT \"\${CMAKE_CURRENT_LIST_DIR}\" MATCHES \"cmake\$\")
+        # We're in the build tree (FetchContent)
+        list(APPEND CMAKE_MODULE_PATH \"${CMAKE_CURRENT_SOURCE_DIR}/cmake\")
+    else()
+        # We're installed (find_package)
+        list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")
+    endif()
+    ")
 
     # Include targets file if we have targets installed
     if (${PROJECT_NAME}_INSTALLED_TARGETS)
