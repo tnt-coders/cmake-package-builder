@@ -12,25 +12,7 @@
 
 ## ⚠️ Required Project Structure
 
-**IMPORTANT:** This library requires your project to follow a standard directory structure. The functions expect these directories to exist:
-
-```
-YourProject/
-├── CMakeLists.txt
-├── cmake/              # Optional: Custom CMake modules (auto-installed if present)
-├── include/            # REQUIRED: Public header files
-│   └── YourNamespace/  # If using core_set_namespace()
-│       └── your_lib/   # Per-target headers (optional but recommended)
-├── src/                # REQUIRED: Source files and private headers
-└── ...
-```
-
-**Why this matters:**
-- `core_add_library()` and `core_add_executable()` automatically configure include paths based on these directories
-- `core_install()` looks for headers in `include/` and CMake modules in `cmake/`
-- If your project uses a different structure, you'll need to manually configure include directories instead
-
-See the [Project Structure Conventions](#project-structure-conventions) section for more details.
+**IMPORTANT:** This library requires your project to follow a standard directory structure with `include/` and `src/` directories. See [Project Structure Conventions](#project-structure-conventions) below for full details.
 
 ## Installation and Setup
 
