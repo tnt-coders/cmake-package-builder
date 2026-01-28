@@ -1,6 +1,6 @@
 # cmake-core
 
-Distillation of common CMake boilerplate code into simple re-usable functions.
+**Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Stop drowning in cryptic configuration! Build sleek, professional C++ libraries and executables with a few simple CMake function calls. Target creation, include paths, installation, and package configs—all handled automatically.
 
 ## Overview
 
