@@ -213,17 +213,22 @@ function(core_generate_package_config)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    # Add FetchContent support
-    string(APPEND config_content "
-    # If using FetchContent, use the source tree's cmake directory
-    if(NOT \"\${CMAKE_CURRENT_LIST_DIR}\" MATCHES \"cmake\$\")
-        # We're in the build tree (FetchContent)
-        list(APPEND CMAKE_MODULE_PATH \"${CMAKE_CURRENT_SOURCE_DIR}/cmake\")
-    else()
-        # We're installed (find_package)
-        list(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")
+    set(config_content "
+# Detect if we're being used via FetchContent (source tree) or find_package (installed)
+get_filename_component(_${PROJECT_NAME}_SELF_DIR \"\${CMAKE_CURRENT_LIST_FILE}\" PATH)
+
+# Try to find the cmake modules directory
+if(EXISTS \"\${_${PROJECT_NAME}_SELF_DIR}/cmake\")
+    # Installed location: modules are next to the config file
+    list(APPEND CMAKE_MODULE_PATH \"\${_${PROJECT_NAME}_SELF_DIR}\")
+else()
+    # FetchContent location: navigate up to find source tree
+    get_filename_component(_${PROJECT_NAME}_PREFIX \"\${_${PROJECT_NAME}_SELF_DIR}\" PATH)
+    if(EXISTS \"\${_${PROJECT_NAME}_PREFIX}/cmake\")
+        list(APPEND CMAKE_MODULE_PATH \"\${_${PROJECT_NAME}_PREFIX}/cmake\")
     endif()
-    ")
+endif()
+")
 
     # Include targets file if we have targets installed
     if (${PROJECT_NAME}_INSTALLED_TARGETS)
