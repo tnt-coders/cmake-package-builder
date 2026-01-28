@@ -213,7 +213,7 @@ function(core_generate_package_config)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    set(config_content "
+    string(APPEND config_content "
 # Detect if we're being used via FetchContent (source tree) or find_package (installed)
 get_filename_component(_${PROJECT_NAME}_SELF_DIR \"\${CMAKE_CURRENT_LIST_FILE}\" PATH)
 
