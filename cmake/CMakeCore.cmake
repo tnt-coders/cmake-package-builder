@@ -228,6 +228,8 @@ else()
         list(APPEND CMAKE_MODULE_PATH \"\${_${PROJECT_NAME}_PREFIX}/cmake\")
     endif()
 endif()
+
+message(\"MODULE PATH INSIDE FILE: \${CMAKE_MODULE_PATH}\")
 ")
 
     # Include targets file if we have targets installed
