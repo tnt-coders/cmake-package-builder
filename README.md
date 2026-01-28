@@ -10,17 +10,20 @@ Distillation of common CMake boilerplate code into simple re-usable functions.
 - Automated installation and packaging with CMake config file generation
 - Namespace support for library targets
 
-## Installation
+## Installation and Setup
 
 ### Prerequisites
 - CMake 3.15 or higher
 - Git (required for version management)
 
-### Recommended: Use with FetchContent
+### Recommended: FetchContent (Most Common)
 
-The easiest way to use `cmake-core` is with CMake's FetchContent module. Add this to your `CMakeLists.txt`:
+Add this to the top of your `CMakeLists.txt`:
 
 ```cmake
+cmake_minimum_required(VERSION 3.15)
+project(MyProject LANGUAGES CXX)
+
 include(FetchContent)
 FetchContent_Declare(
     cmake-core
@@ -28,24 +31,11 @@ FetchContent_Declare(
     GIT_TAG main  # or specify a version tag like v1.0.0
 )
 FetchContent_MakeAvailable(cmake-core)
-
-# Core.cmake is automatically available after FetchContent
 ```
 
-This automatically downloads and makes the library available without manual installation.
+### Alternative Methods
 
-### Alternative: Add as Subdirectory
-
-If you prefer to manage the dependency manually:
-
-```cmake
-add_subdirectory(path/to/cmake-core)
-```
-
-### Alternative: Install from Source
-
-For system-wide installation:
-
+**System-wide installation:**
 ```bash
 git clone <repository-url> cmake-core
 cd cmake-core
@@ -53,46 +43,17 @@ cmake -B build
 cmake --install build --prefix /path/to/install
 ```
 
-Then use in your project with:
-
+Then in your CMakeLists.txt:
 ```cmake
 find_package(cmake-core REQUIRED)
+```
+
+**As a subdirectory:**
+```cmake
+add_subdirectory(path/to/cmake-core)
 ```
 
 ## Usage
-
-### Basic Setup
-
-In your project's `CMakeLists.txt`:
-
-```cmake
-cmake_minimum_required(VERSION 3.15)
-project(MyProject LANGUAGES CXX)
-
-# Fetch cmake-core
-include(FetchContent)
-FetchContent_Declare(
-    cmake-core
-    GIT_REPOSITORY <repository-url>
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(cmake-core)
-
-# Core.cmake is automatically included and ready to use
-```
-
-If you installed cmake-core system-wide:
-
-```cmake
-find_package(cmake-core REQUIRED)
-```
-
-If using as a subdirectory:
-
-```cmake
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/path/to/cmake-core/cmake")
-include(Core)
-```
 
 ### Setting Version from Git
 
