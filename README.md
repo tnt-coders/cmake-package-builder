@@ -16,10 +16,15 @@ Distillation of common CMake boilerplate code into simple re-usable functions.
 - CMake 3.15 or higher
 - Git (required for version management)
 
-### Recommended: FetchContent (Most Common)
+Choose one of the following installation methods:
 
-Add this to the top of your `CMakeLists.txt`:
+---
 
+### Method 1: FetchContent (Recommended)
+
+This is the easiest and most common method. CMake automatically downloads and integrates cmake-core into your project.
+
+**CMakeLists.txt:**
 ```cmake
 cmake_minimum_required(VERSION 3.15)
 project(MyProject LANGUAGES CXX)
@@ -31,27 +36,60 @@ FetchContent_Declare(
     GIT_TAG main  # or specify a version tag like v1.0.0
 )
 FetchContent_MakeAvailable(cmake-core)
+
+# Core.cmake is now available - use the functions below
 ```
 
-### Alternative Methods
+---
 
-**System-wide installation:**
+### Method 2: Git Submodule + Subdirectory
+
+If you prefer to track the dependency in your repository:
+
+**Terminal:**
+```bash
+# Add cmake-core as a git submodule
+git submodule add <repository-url> external/cmake-core
+git submodule update --init --recursive
+```
+
+**CMakeLists.txt:**
+```cmake
+cmake_minimum_required(VERSION 3.15)
+project(MyProject LANGUAGES CXX)
+
+# Add cmake-core module path and include it
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cmake-core/cmake")
+include(Core)
+
+# Core.cmake is now available - use the functions below
+```
+
+---
+
+### Method 3: System-Wide Installation
+
+For system-wide installation (requires admin/sudo privileges):
+
+**Terminal:**
 ```bash
 git clone <repository-url> cmake-core
 cd cmake-core
 cmake -B build
-cmake --install build --prefix /path/to/install
+cmake --install build --prefix /usr/local  # or your preferred install location
 ```
 
-Then in your CMakeLists.txt:
+**CMakeLists.txt:**
 ```cmake
+cmake_minimum_required(VERSION 3.15)
+project(MyProject LANGUAGES CXX)
+
 find_package(cmake-core REQUIRED)
+
+# Core.cmake is now available - use the functions below
 ```
 
-**As a subdirectory:**
-```cmake
-add_subdirectory(path/to/cmake-core)
-```
+---
 
 ## Usage
 
