@@ -213,24 +213,7 @@ function(core_generate_package_config)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    string(APPEND config_content "
-# Detect if we're being used via FetchContent (source tree) or find_package (installed)
-get_filename_component(_${PROJECT_NAME}_SELF_DIR \"\${CMAKE_CURRENT_LIST_FILE}\" PATH)
-
-# Try to find the cmake modules directory
-if(EXISTS \"\${_${PROJECT_NAME}_SELF_DIR}/cmake\")
-    # Installed location: modules are next to the config file
-    list(APPEND CMAKE_MODULE_PATH \"\${_${PROJECT_NAME}_SELF_DIR}\")
-else()
-    # FetchContent location: navigate up to find source tree
-    get_filename_component(_${PROJECT_NAME}_PREFIX \"\${_${PROJECT_NAME}_SELF_DIR}\" PATH)
-    if(EXISTS \"\${_${PROJECT_NAME}_PREFIX}/cmake\")
-        list(APPEND CMAKE_MODULE_PATH \"\${_${PROJECT_NAME}_PREFIX}/cmake\")
-    endif()
-endif()
-
-message(\"MODULE PATH INSIDE FILE: \${CMAKE_MODULE_PATH}\")
-")
+    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
 
     # Include targets file if we have targets installed
     if (${PROJECT_NAME}_INSTALLED_TARGETS)
