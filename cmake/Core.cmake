@@ -150,13 +150,8 @@ endfunction()
 function(core_install)
     set(options)
     set(one_value_args)
-    set(multi_value_args TARGETS)
+    set(multi_value_args TARGETS MODULE_FILES)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
-
-    # Validate input arguments
-    if (NOT args_TARGETS)
-        message(FATAL_ERROR "Missing required input argument 'TARGETS'.")
-    endif ()
 
     # Set the install destination and namespace
     set(install_destination "lib/cmake/${PROJECT_NAME}")
@@ -164,39 +159,55 @@ function(core_install)
         set(install_namespace "${PROJECT_NAMESPACE}::")
     endif ()
 
-    # Create an export package of the targets
-    # Use GNUInstallDirs and COMPONENTS
-    # See "Deep CMake for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
-    # TODO: Investigate why using "COMPONENTS" broke usage of the package
-    install(
-            TARGETS ${args_TARGETS}
-            EXPORT ${PROJECT_NAME}Targets
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            #COMPONENT ${PROJECT_NAME}_Development
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            #COMPONENT ${PROJECT_NAME}_Development
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            #COMPONENT ${PROJECT_NAME}_Runtime
-            #NAMELINK_COMPONENT ${PROJECT_NAME}_Development
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-            #COMPONENT ${PROJECT_NAME}_Runtime)
+    # If targets are specified, create and install the export package
+    if (args_TARGETS)
+        # Create an export package of the targets
+        # Use GNUInstallDirs and COMPONENTS
+        # See "Deep CMake for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
+        # TODO: Investigate why using "COMPONENTS" broke usage of the package
+        install(
+                TARGETS ${args_TARGETS}
+                EXPORT ${PROJECT_NAME}Targets
+                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                #COMPONENT ${PROJECT_NAME}_Development
+                INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+                #COMPONENT ${PROJECT_NAME}_Development
+                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                #COMPONENT ${PROJECT_NAME}_Runtime
+                #NAMELINK_COMPONENT ${PROJECT_NAME}_Development
+                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+                #COMPONENT ${PROJECT_NAME}_Runtime)
 
-    # Install the export package
-    install(
-            EXPORT ${PROJECT_NAME}Targets
-            FILE ${PROJECT_NAME}Targets.cmake
-            NAMESPACE ${install_namespace}
-            DESTINATION ${install_destination})
+        # Install the export package
+        install(
+                EXPORT ${PROJECT_NAME}Targets
+                FILE ${PROJECT_NAME}Targets.cmake
+                NAMESPACE ${install_namespace}
+                DESTINATION ${install_destination})
+    endif ()
+
+    # If module files are specified, install them to the package directory
+    if (args_MODULE_FILES)
+        install(
+                FILES ${args_MODULE_FILES}
+                DESTINATION ${install_destination})
+    endif ()
 
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    # Include Core.cmake if it exists (for the cmake-core package itself)
-    if (EXISTS "${PROJECT_SOURCE_DIR}/cmake/Core.cmake")
-        string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/Core.cmake)\n")
+    # Include any module files that were specified
+    if (args_MODULE_FILES)
+        foreach(module_file ${args_MODULE_FILES})
+            get_filename_component(module_name ${module_file} NAME)
+            string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${module_name})\n")
+        endforeach()
     endif()
 
-    string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
+    # Include targets file if we have targets
+    if (args_TARGETS)
+        string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
+    endif ()
 
     file(WRITE ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake.in "${config_content}")
     configure_package_config_file(

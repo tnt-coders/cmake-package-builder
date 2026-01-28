@@ -8,18 +8,6 @@ include(Core)
 # Set version from Git
 core_set_project_version_from_git()
 
-# Set namespace for the package
-core_set_namespace(Core)
-
-# Create an INTERFACE library (header-only/module-only library with no compiled code)
-core_add_library(TARGET cmake INTERFACE)
-
-# Install the Core.cmake module file to the proper location
-# This must be in lib/cmake/cmake-core/ so it can be found by find_package()
-install(
-    FILES cmake/Core.cmake
-    DESTINATION lib/cmake/${PROJECT_NAME}
-)
-
-# Use our own core_install() function to generate CoreConfig.cmake and CoreConfigVersion.cmake
-core_install(TARGETS cmake)
+# Use our own core_install() function to install Core.cmake and generate config files
+# MODULE_FILES installs the specified files and includes them in the generated Config file
+core_install(MODULE_FILES cmake/Core.cmake)
