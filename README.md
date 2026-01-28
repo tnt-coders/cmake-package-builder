@@ -1,10 +1,10 @@
-# cmake-core
+# CMakeCore
 
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Stop drowning in cryptic configuration! Build sleek, professional C++ libraries and executables with a few simple CMake function calls. Target creation, include paths, installation, and package configs—all handled automatically.
 
 ## Overview
 
-`cmake-core` provides a collection of CMake utility functions that simplify common project setup tasks including:
+`CMakeCore` provides a collection of CMake utility functions that simplify common project setup tasks including:
 - Git-based semantic versioning
 - Simplified target creation with standard include directory structures
 - Automated installation and packaging with CMake config file generation
@@ -26,7 +26,7 @@ Choose one of the following installation methods:
 
 ### Method 1: FetchContent (Recommended)
 
-This is the easiest and most common method. CMake automatically downloads and integrates cmake-core into your project.
+This is the easiest and most common method. CMake automatically downloads and integrates CMakeCore into your project.
 
 **CMakeLists.txt:**
 ```cmake
@@ -35,13 +35,15 @@ project(MyProject LANGUAGES CXX)
 
 include(FetchContent)
 FetchContent_Declare(
-    cmake-core
+    CMakeCore
     GIT_REPOSITORY <repository-url>
     GIT_TAG main  # or specify a version tag like v1.0.0
 )
-FetchContent_MakeAvailable(cmake-core)
+FetchContent_MakeAvailable(CMakeCore)
 
-# Core.cmake is now available - use the functions below
+include(CMakeCore)
+
+# CMakeCore.cmake is now available - use the functions below
 ```
 
 ---
@@ -52,8 +54,8 @@ For system-wide installation (requires admin/sudo privileges):
 
 **Terminal:**
 ```bash
-git clone <repository-url> cmake-core
-cd cmake-core
+git clone <repository-url> CMakeCore
+cd CMakeCore
 cmake -B build
 cmake --install build --prefix /usr/local  # or your preferred install location
 ```
@@ -63,9 +65,11 @@ cmake --install build --prefix /usr/local  # or your preferred install location
 cmake_minimum_required(VERSION 3.15)
 project(MyProject LANGUAGES CXX)
 
-find_package(cmake-core REQUIRED)
+find_package(CMakeCore REQUIRED)
 
-# Core.cmake is now available - use the functions below
+include(CMakeCore)
+
+# CMakeCore.cmake is now available - use the functions below
 ```
 
 ---
@@ -76,8 +80,8 @@ If you prefer to track the dependency in your repository, or if you need to make
 
 **Terminal:**
 ```bash
-# Add cmake-core as a git submodule
-git submodule add <repository-url> external/cmake-core
+# Add CMakeCore as a git submodule
+git submodule add <repository-url> external/CMakeCore
 git submodule update --init --recursive
 ```
 
@@ -86,14 +90,14 @@ git submodule update --init --recursive
 cmake_minimum_required(VERSION 3.15)
 project(MyProject LANGUAGES CXX)
 
-# Add cmake-core module path and include it
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cmake-core/cmake")
-include(Core)
+# Add CMakeCore module path and include it
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/CMakeCore/cmake")
+include(CMakeCore)
 
-# Core.cmake is now available - use the functions below
+# CMakeCore.cmake is now available - use the functions below
 ```
 
-**Note:** This method is ideal if your project uses a non-standard directory structure and you need to fork/modify cmake-core to work with your specific setup. You can make changes directly in the submodule without affecting other projects.
+**Note:** This method is ideal if your project uses a non-standard directory structure and you need to fork/modify CMakeCore to work with your specific setup. You can make changes directly in the submodule without affecting other projects.
 
 ---
 
@@ -206,14 +210,16 @@ This function automatically generates:
 cmake_minimum_required(VERSION 3.15)
 project(MyAwesomeProject LANGUAGES CXX)
 
-# Fetch cmake-core
+# Fetch CMakeCore
 include(FetchContent)
 FetchContent_Declare(
-    cmake-core
+    CMakeCore
     GIT_REPOSITORY <repository-url>
     GIT_TAG main
 )
-FetchContent_MakeAvailable(cmake-core)
+FetchContent_MakeAvailable(CMakeCore)
+
+include(CMakeCore)
 
 # Set version from Git tags
 core_set_version_from_git()
@@ -245,7 +251,7 @@ core_generate_package_config()
 
 ## Project Structure Conventions
 
-Your project **MUST** follow this structure for cmake-core functions to work correctly:
+Your project **MUST** follow this structure for CMakeCore functions to work correctly:
 
 ```
 MyProject/

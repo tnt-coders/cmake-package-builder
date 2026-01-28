@@ -193,17 +193,11 @@ function(core_install)
         set(${PROJECT_NAME}_INSTALLED_TARGETS ${args_TARGETS} PARENT_SCOPE)
     endif()
 
-    # Check for CMake modules in the project's cmake directory
-    if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/cmake)
-        file(GLOB cmake_modules "${CMAKE_CURRENT_LIST_DIR}/cmake/*.cmake")
-    endif()
-
-    # Install CMake module files if they exist
-    if (cmake_modules)
-        install(
-                FILES ${cmake_modules}
-                DESTINATION ${install_destination})
-    endif()
+    # Install public CMake modules for the project
+    install(
+            DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/cmake/
+            DESTINATION ${install_destination}
+            FILES_MATCHING PATTERN "*.cmake")
 
     # Install public header files for the project
     install(
@@ -216,23 +210,10 @@ function(core_generate_package_config)
     # Set the install destination
     set(install_destination "lib/cmake/${PROJECT_NAME}")
 
-    # Check for CMake modules in the project's cmake directory
-    if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/cmake)
-        file(GLOB cmake_modules "${CMAKE_CURRENT_LIST_DIR}/cmake/*.cmake")
-    endif()
-
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    # If CMake modules exist, add module path and include them
-    if (cmake_modules)
-        string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
-
-        foreach(module_file ${cmake_modules})
-            get_filename_component(module_name ${module_file} NAME)
-            string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${module_name})\n")
-        endforeach()
-    endif()
+    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
 
     # Include targets file if we have targets installed
     if (${PROJECT_NAME}_INSTALLED_TARGETS)
@@ -261,11 +242,5 @@ function(core_generate_package_config)
     install(
             FILES ${install_files}
             DESTINATION ${install_destination})
-
-    # Install CMake module files if they exist
-    if (cmake_modules)
-        install(
-                FILES ${cmake_modules}
-                DESTINATION ${install_destination})
-    endif()
+            
 endfunction()
