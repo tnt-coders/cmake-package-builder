@@ -6,8 +6,10 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(Core)
 
 # Set version from Git
-core_set_project_version_from_git()
+core_set_version_from_git()
 
-# Use our own core_install() function to install Core.cmake and generate config files
-# MODULE_FILES installs the specified files and includes them in the generated Config file
-core_install(MODULE_FILES cmake/Core.cmake)
+# Use our own core_install() function to install Core.cmake
+core_install()
+
+# Generate package config files
+core_generate_package_config()

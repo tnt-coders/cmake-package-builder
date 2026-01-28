@@ -156,9 +156,6 @@ function(core_install)
     # If no TARGETS specified, get all targets in current directory
     if (NOT args_TARGETS)
         get_directory_property(args_TARGETS BUILDSYSTEM_TARGETS)
-        if (NOT args_TARGETS)
-            message(FATAL_ERROR "No targets found to install.")
-        endif()
     endif()
 
     # Set the install destination and namespace
@@ -166,33 +163,35 @@ function(core_install)
     if (PROJECT_NAMESPACE)
         set(install_namespace "${PROJECT_NAMESPACE}::")
     endif ()
+ 
+    if (args_TARGETS)
+        # Create an export package of the targets
+        # Use GNUInstallDirs and COMPONENTS
+        # See "Deep CMake for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
+        # TODO: Implement COMPONENTS
+        install(
+                TARGETS ${args_TARGETS}
+                EXPORT ${PROJECT_NAME}Targets
+                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                #COMPONENT Development
+                INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+                #COMPONENT Development
+                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                #COMPONENT Runtime
+                #NAMELINK_COMPONENT Development
+                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+                #COMPONENT Runtime)
 
-    # Create an export package of the targets
-    # Use GNUInstallDirs and COMPONENTS
-    # See "Deep CMake for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
-    # TODO: Implement COMPONENTS
-    install(
-            TARGETS ${args_TARGETS}
-            EXPORT ${PROJECT_NAME}Targets
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            #COMPONENT Development
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            #COMPONENT Development
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            #COMPONENT Runtime
-            #NAMELINK_COMPONENT Development
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-            #COMPONENT Runtime)
+        # Install the export package
+        install(
+                EXPORT ${PROJECT_NAME}Targets
+                FILE ${PROJECT_NAME}Targets.cmake
+                NAMESPACE ${install_namespace}
+                DESTINATION ${install_destination})
 
-    # Install the export package
-    install(
-            EXPORT ${PROJECT_NAME}Targets
-            FILE ${PROJECT_NAME}Targets.cmake
-            NAMESPACE ${install_namespace}
-            DESTINATION ${install_destination})
-
-    # Store installed targets for later use by core_generate_package_config
-    set(${PROJECT_NAME}_INSTALLED_TARGETS ${args_TARGETS} PARENT_SCOPE)
+        # Store installed targets for later use by core_generate_package_config
+        set(${PROJECT_NAME}_INSTALLED_TARGETS ${args_TARGETS} PARENT_SCOPE)
+    endif()
 
     # Check for CMake modules in the project's cmake directory
     if (EXISTS ${PROJECT_SOURCE_DIR}/cmake)
