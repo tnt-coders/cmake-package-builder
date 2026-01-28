@@ -9,12 +9,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
 
 include(CMakeCore)
 
-# Set version from Git
-#TODO
-#core_set_version_from_git()
+# Get the project version
+core_get_project_version()
 
 # Use our own core_install() function to install modules
 core_install()
-
-# Generate package config files
-core_generate_package_config()

@@ -3,7 +3,7 @@ include_guard(GLOBAL)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
-function(_core_get_project_version)
+function(core_get_project_version)
 
     # If project version is already defined, return
     if(PROJECT_VERSION)
@@ -86,9 +86,9 @@ function(_core_get_project_version)
         set(PROJECT_VERSION_MAJOR "0" PARENT_SCOPE)
         set(PROJECT_VERSION_MINOR "0" PARENT_SCOPE)
         set(PROJECT_VERSION_PATCH "0" PARENT_SCOPE)
-        message(WARNING 
+        message(WARNING
             "Project version could not be determined. "
-            "Defaulting to ${PROJECT_VERSION}. "
+            "Defaulting to 0.0.0. "
             "Either specify the project version manually or add a Git tag(v<major>.<minor>.<patch>) to override.")
     endif()
 endfunction()
@@ -100,12 +100,12 @@ function(core_install)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
     if(NOT PROJECT_VERSION)
-        _core_get_project_version()
+        message(FATAL "Project version not specified.")
     endif()
 
     # If no TARGETS specified, get all targets in current directory
     if(NOT args_TARGETS)
-        message(FATAL "core_install(): Missing required argument \"TARGETS\"")
+        message(FATAL "Missing required argument \"TARGETS\"")
     endif()
 
     # Set the install destination and namespace
@@ -197,7 +197,7 @@ function(core_conan_package)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
     if(NOT PROJECT_VERSION)
-        _core_get_project_version()
+        message(FATAL "Project version not specified.")
     endif()
 
     if(NOT args_CHANNEL)
