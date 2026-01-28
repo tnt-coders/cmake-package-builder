@@ -46,32 +46,7 @@ FetchContent_MakeAvailable(cmake-core)
 
 ---
 
-### Method 2: Git Submodule + Subdirectory
-
-If you prefer to track the dependency in your repository:
-
-**Terminal:**
-```bash
-# Add cmake-core as a git submodule
-git submodule add <repository-url> external/cmake-core
-git submodule update --init --recursive
-```
-
-**CMakeLists.txt:**
-```cmake
-cmake_minimum_required(VERSION 3.15)
-project(MyProject LANGUAGES CXX)
-
-# Add cmake-core module path and include it
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cmake-core/cmake")
-include(Core)
-
-# Core.cmake is now available - use the functions below
-```
-
----
-
-### Method 3: System-Wide Installation
+### Method 2: System-Wide Installation
 
 For system-wide installation (requires admin/sudo privileges):
 
@@ -92,6 +67,33 @@ find_package(cmake-core REQUIRED)
 
 # Core.cmake is now available - use the functions below
 ```
+
+---
+
+### Method 3: Git Submodule + Subdirectory
+
+If you prefer to track the dependency in your repository, or if you need to make custom modifications to the library:
+
+**Terminal:**
+```bash
+# Add cmake-core as a git submodule
+git submodule add <repository-url> external/cmake-core
+git submodule update --init --recursive
+```
+
+**CMakeLists.txt:**
+```cmake
+cmake_minimum_required(VERSION 3.15)
+project(MyProject LANGUAGES CXX)
+
+# Add cmake-core module path and include it
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cmake-core/cmake")
+include(Core)
+
+# Core.cmake is now available - use the functions below
+```
+
+**Note:** This method is ideal if your project uses a non-standard directory structure and you need to fork/modify cmake-core to work with your specific setup. You can make changes directly in the submodule without affecting other projects.
 
 ---
 
