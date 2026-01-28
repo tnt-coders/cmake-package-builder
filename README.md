@@ -12,7 +12,7 @@ Distillation of common CMake boilerplate code into simple re-usable functions.
 
 ## ⚠️ Required Project Structure
 
-**IMPORTANT:** This library requires your project to follow a specific directory structure. The functions expect these directories to exist:
+**IMPORTANT:** This library requires your project to follow a standard directory structure. The functions expect these directories to exist:
 
 ```
 YourProject/
