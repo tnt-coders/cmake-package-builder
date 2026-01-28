@@ -3,7 +3,7 @@ project(CMakeCore LANGUAGES NONE)
 
 # Include our own Core.cmake module
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-include(CMakeCore/Core)
+include(CMakeCore)
 
 # Set version from Git
 #TODO
