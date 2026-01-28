@@ -160,6 +160,7 @@ function(core_install)
             message(FATAL_ERROR "No targets found to install.")
         endif()
     endif()
+
     # Set the install destination and namespace
     set(install_destination "lib/cmake/${PROJECT_NAME}")
     if (PROJECT_NAMESPACE)
@@ -193,6 +194,18 @@ function(core_install)
     # Store installed targets for later use by core_generate_package_config
     set(${PROJECT_NAME}_INSTALLED_TARGETS ${args_TARGETS} PARENT_SCOPE)
 
+    # Check for CMake modules in the project's cmake directory
+    if (EXISTS ${PROJECT_SOURCE_DIR}/cmake)
+        file(GLOB cmake_modules "${PROJECT_SOURCE_DIR}/cmake/*.cmake")
+    endif()
+
+    # Install CMake module files if they exist
+    if (cmake_modules)
+        install(
+                FILES ${cmake_modules}
+                DESTINATION ${install_destination})
+    endif()
+
     # Install public header files for the project
     install(
             DIRECTORY ${PROJECT_SOURCE_DIR}/include/
@@ -204,12 +217,27 @@ function(core_generate_package_config)
     # Set the install destination
     set(install_destination "lib/cmake/${PROJECT_NAME}")
 
+    # Check for CMake modules in the project's cmake directory
+    if (EXISTS ${PROJECT_SOURCE_DIR}/cmake)
+        file(GLOB cmake_modules "${PROJECT_SOURCE_DIR}/cmake/*.cmake")
+    endif()
+
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
+    # If CMake modules exist, add module path and include them
+    if (cmake_modules)
+        string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
+
+        foreach(module_file ${cmake_modules})
+            get_filename_component(module_name ${module_file} NAME)
+            string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${module_name})\n")
+        endforeach()
+    endif()
+
     # Include targets file if we have targets installed
     if (${PROJECT_NAME}_INSTALLED_TARGETS)
-        string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
+        string(APPEND config_content "\ninclude(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
     endif ()
 
     file(WRITE ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake.in "${config_content}")
@@ -234,4 +262,11 @@ function(core_generate_package_config)
     install(
             FILES ${install_files}
             DESTINATION ${install_destination})
+
+    # Install CMake module files if they exist
+    if (cmake_modules)
+        install(
+                FILES ${cmake_modules}
+                DESTINATION ${install_destination})
+    endif()
 endfunction()
