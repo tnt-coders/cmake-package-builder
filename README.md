@@ -90,8 +90,9 @@ git submodule update --init --recursive
 cmake_minimum_required(VERSION 3.15)
 project(MyProject LANGUAGES CXX)
 
-# Add CMakeCore module path and include it
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/CMakeCore/cmake")
+# Add this project as a subdirectory
+add_subdirectory(external/CMakeCore)
+
 include(CMakeCore)
 
 # CMakeCore.cmake is now available - use the functions below
