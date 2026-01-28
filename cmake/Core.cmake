@@ -3,7 +3,7 @@ include_guard(GLOBAL)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
-function(tnt_project__set_version_from_git)
+function(core_set_project_version_from_git)
 
     # This function requires the Git package to function
     find_package(Git REQUIRED)
@@ -74,12 +74,12 @@ function(tnt_project__set_version_from_git)
     set(${PROJECT_NAME}_VERSION_HASH ${version_git_hash} PARENT_SCOPE)
 endfunction()
 
-function(tnt_project__set_namespace args_NAMESPACE)
+function(core_set_namespace args_NAMESPACE)
     set(PROJECT_NAMESPACE ${args_NAMESPACE} PARENT_SCOPE)
     set(${PROJECT_NAME}_NAMESPACE ${args_NAMESPACE} PARENT_SCOPE)
 endfunction()
 
-function(tnt_project__add_executable)
+function(core_add_executable)
     set(options)
     set(one_value_args TARGET)
     set(multi_value_args SOURCES)
@@ -104,7 +104,7 @@ function(tnt_project__add_executable)
             ${PROJECT_SOURCE_DIR}/src)
 endfunction()
 
-function(tnt_project__add_library)
+function(core_add_library)
     set(options INTERFACE)
     set(one_value_args TARGET)
     set(multi_value_args SOURCES)
@@ -147,7 +147,7 @@ function(tnt_project__add_library)
     endif ()
 endfunction()
 
-function(tnt_project__install)
+function(core_install)
     set(options)
     set(one_value_args)
     set(multi_value_args TARGETS)
@@ -170,7 +170,7 @@ function(tnt_project__install)
     # TODO: Investigate why using "COMPONENTS" broke usage of the package
     install(
             TARGETS ${args_TARGETS}
-            EXPORT ${PROJECT_NAME}-targets
+            EXPORT ${PROJECT_NAME}Targets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             #COMPONENT ${PROJECT_NAME}_Development
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -183,31 +183,37 @@ function(tnt_project__install)
 
     # Install the export package
     install(
-            EXPORT ${PROJECT_NAME}-targets
-            FILE ${PROJECT_NAME}-targets.cmake
+            EXPORT ${PROJECT_NAME}Targets
+            FILE ${PROJECT_NAME}Targets.cmake
             NAMESPACE ${install_namespace}
             DESTINATION ${install_destination})
 
     # Generate a package configuration file
-    file(
-            WRITE ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake.in
-            "@PACKAGE_INIT@\n"
-            "include(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}-targets.cmake)")
+    set(config_content "@PACKAGE_INIT@\n")
+
+    # Include Core.cmake if it exists (for the cmake-core package itself)
+    if (EXISTS "${PROJECT_SOURCE_DIR}/cmake/Core.cmake")
+        string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/Core.cmake)\n")
+    endif()
+
+    string(APPEND config_content "include(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
+
+    file(WRITE ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake.in "${config_content}")
     configure_package_config_file(
-            ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake.in
-            ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake
+            ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake.in
+            ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
             INSTALL_DESTINATION ${install_destination})
 
     # Gather files to be installed
-    list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config.cmake)
+    list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake)
 
     # If the package has a version specified, generate a package version file
     if (PROJECT_VERSION)
-        write_basic_package_version_file(${PROJECT_NAME}-config-version.cmake
+        write_basic_package_version_file(${PROJECT_NAME}ConfigVersion.cmake
                 VERSION ${PROJECT_VERSION}
                 COMPATIBILITY SameMajorVersion)
 
-        list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake)
+        list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake)
     endif ()
 
     # Install config files for the project
