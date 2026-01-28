@@ -86,8 +86,8 @@ function(core_get_project_version)
         set(PROJECT_VERSION_MAJOR "0" PARENT_SCOPE)
         set(PROJECT_VERSION_MINOR "0" PARENT_SCOPE)
         set(PROJECT_VERSION_PATCH "0" PARENT_SCOPE)
-        message(WARNING "Project version could not be determined. "
-            "Defaulting to 0.0.0. "
+        message(WARNING "Project version could not be determined."
+            "Defaulting to 0.0.0."
             "Either specify the project version manually or add a Git tag(v<major>.<minor>.<patch>) to override.")
     endif()
 endfunction()
@@ -97,15 +97,6 @@ function(core_install)
     set(one_value_args NAMESPACE)
     set(multi_value_args TARGETS)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
-
-    if(NOT PROJECT_VERSION)
-        message(FATAL_ERROR "Project version not specified.")
-    endif()
-
-    # If no TARGETS specified, get all targets in current directory
-    if(NOT args_TARGETS)
-        message(FATAL_ERROR "Missing required argument \"TARGETS\"")
-    endif()
 
     # Set the install destination and namespace
     set(install_destination "lib/cmake/${PROJECT_NAME}")

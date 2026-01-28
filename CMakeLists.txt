@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(CMakeCore LANGUAGES NONE)
+project(CMakeCore VERSION 1.0.0 LANGUAGES NONE)
 
 # Include our own Core.cmake module
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
