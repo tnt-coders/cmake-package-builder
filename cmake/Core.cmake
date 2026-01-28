@@ -11,7 +11,7 @@ function(core_set_version_from_git)
     # Use "git describe" to get version information from Git
     execute_process(
             COMMAND ${GIT_EXECUTABLE} describe --dirty --long --match=v* --tags
-            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
             RESULT_VARIABLE git_result
             OUTPUT_VARIABLE git_output OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_VARIABLE git_error ERROR_STRIP_TRAILING_WHITESPACE)
@@ -44,7 +44,7 @@ function(core_set_version_from_git)
     # Use "git log" to get the current commit hash from Git
     execute_process(
             COMMAND ${GIT_EXECUTABLE} log -1 --pretty=format:%H
-            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
             RESULT_VARIABLE git_result
             OUTPUT_VARIABLE git_output OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_VARIABLE git_error ERROR_STRIP_TRAILING_WHITESPACE)
@@ -89,19 +89,19 @@ function(core_add_executable)
     add_executable(${args_TARGET} ${args_SOURCES})
 
     # Initialize default include directories
-    set(private_include_dir "${PROJECT_SOURCE_DIR}/include/${args_TARGET}")
+    set(private_include_dir "${CMAKE_CURRENT_LIST_DIR}/include/${args_TARGET}")
 
     # Handle namespace considerations
     if (PROJECT_NAMESPACE)
-        set(private_include_dir "${PROJECT_SOURCE_DIR}/include/${PROJECT_NAMESPACE}/${args_TARGET}")
+        set(private_include_dir "${CMAKE_CURRENT_LIST_DIR}/include/${PROJECT_NAMESPACE}/${args_TARGET}")
     endif ()
 
     # Set default include directories
     target_include_directories(${args_TARGET}
             PRIVATE
-            ${PROJECT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_LIST_DIR}/include
             ${private_include_dir}
-            ${PROJECT_SOURCE_DIR}/src)
+            ${CMAKE_CURRENT_LIST_DIR}/src)
 endfunction()
 
 function(core_add_library)
@@ -122,28 +122,28 @@ function(core_add_library)
     endif ()
 
     # Initialize default include directories
-    set(private_include_dir "${PROJECT_SOURCE_DIR}/include/${args_TARGET}")
+    set(private_include_dir "${CMAKE_CURRENT_LIST_DIR}/include/${args_TARGET}")
 
     # Handle namespace considerations
     if (PROJECT_NAMESPACE)
         add_library(${PROJECT_NAMESPACE}::${args_TARGET} ALIAS ${args_TARGET})
-        set(private_include_dir "${PROJECT_SOURCE_DIR}/include/${PROJECT_NAMESPACE}/${args_TARGET}")
+        set(private_include_dir "${CMAKE_CURRENT_LIST_DIR}/include/${PROJECT_NAMESPACE}/${args_TARGET}")
     endif ()
 
     # Set default include directories
     if (${args_INTERFACE})
         target_include_directories(${args_TARGET}
                 INTERFACE
-                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
                 $<INSTALL_INTERFACE:include>)
     else ()
         target_include_directories(${args_TARGET}
                 PUBLIC
-                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
                 $<INSTALL_INTERFACE:include>
                 PRIVATE
                 $<BUILD_INTERFACE:${private_include_dir}>
-                $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>)
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/src>)
     endif ()
 endfunction()
 
@@ -194,8 +194,8 @@ function(core_install)
     endif()
 
     # Check for CMake modules in the project's cmake directory
-    if (EXISTS ${PROJECT_SOURCE_DIR}/cmake)
-        file(GLOB cmake_modules "${PROJECT_SOURCE_DIR}/cmake/*.cmake")
+    if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/cmake)
+        file(GLOB cmake_modules "${CMAKE_CURRENT_LIST_DIR}/cmake/*.cmake")
     endif()
 
     # Install CMake module files if they exist
@@ -207,7 +207,7 @@ function(core_install)
 
     # Install public header files for the project
     install(
-            DIRECTORY ${PROJECT_SOURCE_DIR}/include/
+            DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             FILES_MATCHING PATTERN "*.h*")
 endfunction()
@@ -217,8 +217,8 @@ function(core_generate_package_config)
     set(install_destination "lib/cmake/${PROJECT_NAME}")
 
     # Check for CMake modules in the project's cmake directory
-    if (EXISTS ${PROJECT_SOURCE_DIR}/cmake)
-        file(GLOB cmake_modules "${PROJECT_SOURCE_DIR}/cmake/*.cmake")
+    if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/cmake)
+        file(GLOB cmake_modules "${CMAKE_CURRENT_LIST_DIR}/cmake/*.cmake")
     endif()
 
     # Generate a package configuration file
