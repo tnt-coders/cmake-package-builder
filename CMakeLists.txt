@@ -6,7 +6,8 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(CMakeCore/Core)
 
 # Set version from Git
-core_set_version_from_git()
+#TODO
+#core_set_version_from_git()
 
 # Use our own core_install() function to install modules
 core_install()
