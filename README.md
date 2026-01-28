@@ -10,6 +10,28 @@ Distillation of common CMake boilerplate code into simple re-usable functions.
 - Automated installation and packaging with CMake config file generation
 - Namespace support for library targets
 
+## ⚠️ Required Project Structure
+
+**IMPORTANT:** This library requires your project to follow a specific directory structure. The functions expect these directories to exist:
+
+```
+YourProject/
+├── CMakeLists.txt
+├── cmake/              # Optional: Custom CMake modules (auto-installed if present)
+├── include/            # REQUIRED: Public header files
+│   └── YourNamespace/  # If using core_set_namespace()
+│       └── your_lib/   # Per-target headers (optional but recommended)
+├── src/                # REQUIRED: Source files and private headers
+└── ...
+```
+
+**Why this matters:**
+- `core_add_library()` and `core_add_executable()` automatically configure include paths based on these directories
+- `core_install()` looks for headers in `include/` and CMake modules in `cmake/`
+- If your project uses a different structure, you'll need to manually configure include directories instead
+
+See the [Project Structure Conventions](#project-structure-conventions) section for more details.
+
 ## Installation and Setup
 
 ### Prerequisites
@@ -239,18 +261,48 @@ core_generate_package_config()
 
 ## Project Structure Conventions
 
-For best results, organize your project as follows:
+Your project **MUST** follow this structure for cmake-core functions to work correctly:
 
 ```
 MyProject/
 ├── CMakeLists.txt
-├── cmake/
-│   └── (optional CMake modules)
-├── include/
-│   └── MyNamespace/        # If using namespaces
-│       └── my_library/
-│           └── header.h
-├── src/
-│   └── implementation.cpp
+├── cmake/                  # OPTIONAL: Custom CMake modules
+│   └── FindSomeLib.cmake   # Automatically installed by core_install()
+├── include/                # REQUIRED: Public headers
+│   ├── my_library/         # Per-target headers (optional)
+│   │   └── api.h
+│   └── MyNamespace/        # REQUIRED if using core_set_namespace()
+│       └── my_library/     # Per-target headers (optional)
+│           └── api.h
+├── src/                    # REQUIRED: Implementation files
+│   ├── my_library/         # Optional organization
+│   │   └── impl.cpp
+│   └── main.cpp
 └── ...
 ```
+
+### What Each Directory Does
+
+- **`include/`** (Required): Public header files that will be installed and accessible to users of your library
+  - Automatically added to include paths by `core_add_library()` and `core_add_executable()`
+  - Headers are installed to the system include directory by `core_install()`
+
+- **`src/`** (Required): Private source files and implementation-only headers
+  - Automatically added as a PRIVATE include directory
+  - Not installed by `core_install()`
+
+- **`cmake/`** (Optional): Custom CMake modules (e.g., FindXXX.cmake, XXXConfig.cmake)
+  - Automatically installed by `core_install()` if the directory exists
+
+- **Per-target subdirectories** (Optional but recommended):
+  - `include/<target>/` or `include/<namespace>/<target>/`: Target-specific headers
+  - Automatically added as PRIVATE include paths for that target
+
+### If Your Project Has a Different Structure
+
+If you can't use this structure, you'll need to:
+1. Use standard CMake functions (`add_library()`, `add_executable()`) instead of `core_add_library()` and `core_add_executable()`
+2. Manually configure include directories with `target_include_directories()`
+3. Manually configure installation with `install()` commands
+
+The `core_set_version_from_git()` and `core_set_namespace()` functions will still work regardless of your directory structure.
