@@ -100,7 +100,7 @@ function(core_install)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
     if(NOT PROJECT_VERSION)
-        _core_get_package_version()
+        _core_get_project_version()
     endif()
 
     # If no TARGETS specified, get all targets in current directory
