@@ -181,6 +181,7 @@ function(core_install)
     if(CONAN_PACKAGE AND EXISTS ${PROJECT_SOURCE_DIR}/conanfile.py)
         add_custom_target(${args_NAME}_conan_create ALL
             COMMAND conan create ${PROJECT_SOURCE_DIR} --name=${PROJECT_NAME} --version=${PROJECT_VERSION} --build=missing
+            USES_TERMINAL
             VERBATIM
             COMMENT "Building and installing ${PROJECT_NAME}/${PROJECT_VERSION} into local cache"
         )
