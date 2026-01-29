@@ -92,7 +92,7 @@ function(package_init)
         message(FATAL_ERROR "Package version could not be determined.")
     endif()
 
-    set(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
+    set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
 endfunction()
 
 function(package_add_executable)

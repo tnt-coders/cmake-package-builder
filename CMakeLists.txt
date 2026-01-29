@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.15)
-project(PackageBuilder VERSION 1.0.0 LANGUAGES NONE)
+project(PackageBuilder VERSION 1.0.0 LANGUAGES CXX)
 
 # Include our own modules
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-include(Package)
+include(PackageBuilder)
 
-# Propagate to parent scope for FetchContent or git submodule consumers
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
+#TODO: Propagate to parent scope for FetchContent or git submodule consumers
+#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
 
 # Use our own functions to install/export the package
 package_init()
