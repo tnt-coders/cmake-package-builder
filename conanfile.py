@@ -9,6 +9,7 @@ class CMakePackageBuilderConan(ConanFile):
     author = "TNT Coders <tnt-coders@googlegroups.com>"
     url = "https://github.com/tnt-coders/cmake-package-builder"
     description = "CMake utility functions for simplified project setup/installation"
+    package_type = "build-scripts"
     settings = "os", "compiler", "build_type", "arch"
     exports_sources = "CMakeLists.txt", "cmake/*"
 
