@@ -9,8 +9,5 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
 
 include(CMakeCore)
 
-# Get the project version
-core_get_project_version()
-
 # Use our own core_install() function to install modules
 core_install()

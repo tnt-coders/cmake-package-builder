@@ -3,7 +3,7 @@ include_guard(GLOBAL)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
-function(core_get_project_version)
+function(_core_get_project_version)
 
     # If project version is already defined, return
     if(PROJECT_VERSION)
@@ -98,6 +98,8 @@ function(core_install)
     set(multi_value_args TARGETS)
     cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
+    _core_get_project_version()
+
     # Set the install destination and namespace
     set(install_destination "lib/cmake/${PROJECT_NAME}")
 
@@ -174,43 +176,14 @@ function(core_install)
     install(
             FILES ${install_files}
             DESTINATION ${install_destination})
-endfunction()
 
-function(core_conan_package)
-    if(CONAN_EXPORTED)
-        return()
+    # If conanfile exists build into local cache
+    if(CONAN_PACKAGE AND EXISTS ${PROJECT_SOURCE_DIR}/conanfile.py)
+        add_custom_target(${args_NAME}_conan_create ALL
+            COMMAND conan create ${PROJECT_SOURCE_DIR} --name=${PROJECT_NAME} --version=${PROJECT_VERSION} --build=missing
+            VERBATIM
+            COMMENT "Building and installing ${PROJECT_NAME}/${PROJECT_VERSION} into local cache"
+        )
     endif()
-
-    set(options)
-    set(one_value_args USER CHANNEL)
-    set(multi_value_args)
-    cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
-
-    if(NOT PROJECT_VERSION)
-        message(FATAL "Project version not specified.")
-    endif()
-
-    if(NOT args_CHANNEL)
-        if(PROJECT_VERSION_TWEAK OR PROJECT_VERSION_IS_DIRTY)
-            set(args_CHANNEL testing)
-        else()
-            set(args_CHANNEL stable)
-        endif()
-    endif()
-    if(NOT args_USER)
-        set(args_USER "localuser")
-    endif()
-
-    # Make sure conanfile.py exists
-    if(NOT EXISTS ${PROJECT_SOURCE_DIR}/conanfile.py)
-        message(FATAL_ERROR "No conanfile.py found for the current project.")
-    endif()
-
-    # Build package into local cache
-    set(package_ref "${PROJECT_NAME}/${PROJECT_VERSION}@${args_USER}/${args_CHANNEL}")
-    add_custom_target(${args_NAME}_conan_create ALL
-        COMMAND conan create ${PROJECT_SOURCE_DIR} --name=${PROJECT_NAME} --version=${PROJECT_VERSION} --user=${args_USER} --channel=${args_CHANNEL} --build=missing
-        VERBATIM
-        COMMENT "Building and installing ${package_ref} into local cache"
-    )
+    
 endfunction()
