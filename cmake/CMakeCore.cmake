@@ -209,7 +209,7 @@ function(core_conan_package)
     # Build package into local cache
     set(package_ref "${PROJECT_NAME}/${PROJECT_VERSION}@${args_USER}/${args_CHANNEL}")
     add_custom_target(${args_NAME}_conan_create ALL
-        COMMAND conan create ${PROJECT_SOURCE_DIR} ${package_ref}
+        COMMAND conan create ${PROJECT_SOURCE_DIR} --name=${PROJECT_NAME} --version=${PROJECT_VERSION} --user=${args_USER} --channel=${args_CHANNEL} --build=missing
         VERBATIM
         COMMENT "Building and installing ${package_ref} into local cache"
     )
