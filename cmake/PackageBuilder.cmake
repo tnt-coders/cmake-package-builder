@@ -12,12 +12,6 @@ endfunction()
 
 function(package_init)
 
-    # Check if Conan exists. If it does, export by default
-    find_program(CONAN_EXECUTABLE conan)
-    if(CONAN_EXECUTABLE)
-        option(CONAN_EXPORT "Export a Conan package" ON)
-    endif()
-
     # If no version is specified, get it from Git
     if(NOT PROJECT_VERSION)
         find_package(Git REQUIRED)
@@ -32,7 +26,7 @@ function(package_init)
 
         # If the result is not "0" an error has occurred
         if(git_result)
-            message(FATAL_ERROR ${git_error})
+            message(FATAL_ERROR "Package version could not be determined: ${git_error}")
         endif()
 
         # Parse the version string returned by Git
@@ -65,7 +59,7 @@ function(package_init)
 
         # If the result is not "0" an error has occurred
         if(git_result)
-            message(FATAL_ERROR ${git_error})
+            message(FATAL_ERROR "Package version could not be determined: ${git_error}")
         endif()
 
         set(version_git_hash ${git_output})
@@ -95,19 +89,19 @@ function(package_init)
     set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
 endfunction()
 
-function(package_add_executable)
+function(package_add_executable target)
     _package_check_initialized()
 
-    add_executable(${ARGN})
-    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${ARGV0})
+    add_executable(${target} ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
 endfunction()
 
-function(package_add_library)
+function(package_add_library target)
     _package_check_initialized()
 
-    add_library(${ARGN})
-    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${ARGV0})
-    add_library(${PROJECT_NAME}::${ARGV0} ALIAS ${ARGV0})
+    add_library(${target} ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
+    add_library(${PROJECT_NAME}::${target} ALIAS ${target})
 endfunction()
 
 function(package_install)
@@ -159,10 +153,10 @@ function(package_install)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
+    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${install_destination}\")\n")
 
     # Include targets file if we have targets installed
-    if(${targets})
+    if(targets)
         string(APPEND config_content "\ninclude(\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake)")
     endif()
 

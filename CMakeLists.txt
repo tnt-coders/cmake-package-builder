@@ -1,5 +1,8 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.24)
+
 project(PackageBuilder VERSION 1.0.0 LANGUAGES CXX)
+
+option(CONAN_EXPORT "Export a Conan package" OFF)
 
 # Include our own modules
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
