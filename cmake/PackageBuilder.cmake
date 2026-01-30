@@ -153,7 +153,7 @@ function(package_install)
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
 
-    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${install_destination}\")\n")
+    string(APPEND config_content "\nlist(APPEND CMAKE_MODULE_PATH \"\${CMAKE_CURRENT_LIST_DIR}\")\n")
 
     # Include targets file if we have targets installed
     if(targets)
