@@ -11,21 +11,6 @@ function(_package_check_initialized)
 endfunction()
 
 function(package_create)
-    set(options)
-    set(one_value_args CONAN_PACKAGE)
-    set(multi_value_args)
-    cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
-
-    add_custom_target(conan-create
-        COMMAND conan create ${CMAKE_SOURCE_DIR}
-            --profile=${CMAKE_BINARY_DIR}/conan_host_profile
-            -s build_type=${CMAKE_BUILD_TYPE}
-            --version=${PROJECT_VERSION}
-            --build=missing
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Creating Conan package host profile"
-        VERBATIM
-    )
 
     # If no version is specified, get it from Git
     if(NOT PROJECT_VERSION)
@@ -100,6 +85,17 @@ function(package_create)
     if(NOT PROJECT_VERSION)
         message(FATAL_ERROR "Package version could not be determined.")
     endif()
+
+    add_custom_target(conan-create
+        COMMAND conan create ${CMAKE_SOURCE_DIR}
+            --profile=${CMAKE_BINARY_DIR}/conan_host_profile
+            -s build_type=${CMAKE_BUILD_TYPE}
+            --version=${PROJECT_VERSION}
+            --build=missing
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Creating Conan package host profile"
+        VERBATIM
+    )
 
     set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
 endfunction()
