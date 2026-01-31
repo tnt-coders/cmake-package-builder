@@ -6,11 +6,26 @@ include(GNUInstallDirs)
 function(_package_check_initialized)
     get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITALIZED)
     if(NOT package_initialized)
-        message(FATAL_ERROR "package_init() must be called before all other PackageBuilder functions.")
+        message(FATAL_ERROR "package_create() must be called before all other PackageBuilder functions.")
     endif()
 endfunction()
 
-function(package_init)
+function(package_create)
+    set(options)
+    set(one_value_args CONAN_PACKAGE)
+    set(multi_value_args)
+    cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+    add_custom_target(conan-create
+        COMMAND conan create ${CMAKE_SOURCE_DIR}
+            --profile=${CMAKE_BINARY_DIR}/conan_host_profile
+            -s build_type=${CMAKE_BUILD_TYPE}
+            --version=${PROJECT_VERSION}
+            --build=missing
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Creating Conan package host profile"
+        VERBATIM
+    )
 
     # If no version is specified, get it from Git
     if(NOT PROJECT_VERSION)
@@ -100,7 +115,16 @@ function(package_add_library target)
     _package_check_initialized()
 
     add_library(${target} ${ARGN})
+
+    target_include_directories(${target}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+
     set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
+    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
     add_library(${PROJECT_NAME}::${target} ALIAS ${target})
 endfunction()
 
@@ -139,10 +163,13 @@ function(package_install)
     endif()
 
     # Install public header files for the project
-    install(
-            DIRECTORY ${PROJECT_SOURCE_DIR}/include/
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            FILES_MATCHING PATTERN "*.h*")
+    get_property(public_header_paths GLOBAL PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS)
+    foreach(public_header_path IN LISTS public_header_paths)
+        install(
+                DIRECTORY ${public_header_path}
+                DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+                FILES_MATCHING PATTERN "*.h*")
+    endforeach()
 
     # Install public CMake modules for the project
     install(
@@ -181,22 +208,4 @@ function(package_install)
             FILES ${install_files}
             DESTINATION ${install_destination})
     
-endfunction()
-
-function(package_export)
-    _package_check_initialized()
-
-    set(options)
-    set(one_value_args CONAN_PACKAGE)
-    set(multi_value_args)
-    cmake_parse_arguments(args "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
-
-    if(CONAN_EXPORT)
-        add_custom_target(${args_NAME}_conan_create ALL
-            COMMAND conan create ${PROJECT_SOURCE_DIR} --name=${args_CONAN_PACKAGE} --version=${PROJECT_VERSION} --build=missing
-            USES_TERMINAL
-            VERBATIM
-            COMMENT "Building and installing ${args_CONAN_PACKAGE}/${PROJECT_VERSION} into local cache"
-        )
-    endif()
 endfunction()
