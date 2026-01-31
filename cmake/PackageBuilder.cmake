@@ -165,7 +165,7 @@ function(package_install)
     get_property(public_header_paths GLOBAL PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS)
     foreach(public_header_path IN LISTS public_header_paths)
         install(
-                DIRECTORY ${public_header_path}
+                DIRECTORY ${public_header_path}/
                 DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
                 FILES_MATCHING PATTERN "*.h*")
     endforeach()
