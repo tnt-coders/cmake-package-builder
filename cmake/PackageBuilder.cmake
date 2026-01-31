@@ -87,12 +87,12 @@ function(package_create)
     endif()
 
     add_custom_target(conan-create
-        COMMAND conan create ${CMAKE_SOURCE_DIR}
+        COMMAND conan create ${PROJECT_SOURCE_DIR}
             --profile=${CMAKE_BINARY_DIR}/conan_host_profile
             -s build_type=${CMAKE_BUILD_TYPE}
             --version=${PROJECT_VERSION}
             --build=missing
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         COMMENT "Creating Conan package host profile"
         VERBATIM
     )
@@ -117,6 +117,9 @@ function(package_add_library target)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
+
+    message("SETTING INCLUDE DIRECTORY: ${CMAKE_CURRENT_SOURCE_DIR}/include")
+    message("INSTALL DIR: ${CMAKE_INSTALL_INCLUDEDIR}")
 
     set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
     set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/include)
