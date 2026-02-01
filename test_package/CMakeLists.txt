@@ -3,6 +3,7 @@ project(PackageBuilderTest VERSION 1.0.0 LANGUAGES CXX)
 
 # Find the package we're testing
 find_package(PackageBuilder REQUIRED)
+include(PackageBuilder)
 
 # Test that we can use the PackageBuilder functions
 # This will test that package_create() works
