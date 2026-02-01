@@ -2,16 +2,10 @@ cmake_minimum_required(VERSION 3.24)
 
 project(PackageBuilder VERSION 1.0.0 LANGUAGES CXX)
 
-option(CONAN_EXPORT "Export a Conan package" OFF)
-
 # Include our own modules
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(PackageBuilder)
 
-#TODO: Propagate to parent scope for FetchContent or git submodule consumers
-#set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} PARENT_SCOPE)
-
-# Use our own functions to install/export the package
-package_init()
+# Use our own functions to create/export the package
+package_create()
 package_install()
-package_export(CONAN_PACKAGE cmake-package-builder)
