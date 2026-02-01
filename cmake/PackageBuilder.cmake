@@ -86,13 +86,11 @@ function(package_create)
         message(FATAL_ERROR "Package version could not be determined.")
     endif()
 
+    # Invoke conan provider to generate host profile even if we have no dependencies
+    # Host profile is only generated if "find_package()" is used by the project
+    find_package(__CONAN_DUMMY__ QUIET)
+
     add_custom_target(conan-create
-
-        # From cmake_conan/conan_provider.cmake
-        if(NOT EXISTS ${CMAKE_BINARY_DIR}/conan_host_profile)
-            detect_host_profile(${CMAKE_BINARY_DIR}/conan_host_profile)
-        endif()
-
         COMMAND conan create ${PROJECT_SOURCE_DIR}
             --profile=${CMAKE_BINARY_DIR}/conan_host_profile
             -s build_type=${CMAKE_BUILD_TYPE}
@@ -221,5 +219,4 @@ function(package_install)
     install(
             FILES ${install_files}
             DESTINATION ${install_destination})
-
 endfunction()
