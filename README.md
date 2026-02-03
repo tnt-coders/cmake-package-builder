@@ -11,59 +11,17 @@
 
 ---
 
-## Getting Started
+## Installation
 
-### Method 1: FetchContent
+### Method 1: Conan via cmake-conan (Preferred)
 
-The simplest way to consume PackageBuilder. No installation step required.
-
-```cmake
-cmake_minimum_required(VERSION 3.24)
-project(MyProject LANGUAGES CXX)
-
-include(FetchContent)
-FetchContent_Declare(
-    PackageBuilder
-    GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(PackageBuilder)
-
-include(PackageBuilder)
-```
-
-### Method 2: Install and find_package
-
-Build and install PackageBuilder to your system, then find it like any other CMake package.
-
-**Install:**
-
-```bash
-git clone https://github.com/tnt-coders/cmake-package-builder
-cd cmake-package-builder
-cmake -B build
-cmake --install build --prefix /usr/local
-```
-
-**Consume:**
-
-```cmake
-cmake_minimum_required(VERSION 3.24)
-project(MyProject LANGUAGES CXX)
-
-find_package(PackageBuilder REQUIRED)
-include(PackageBuilder)
-```
-
-### Method 3: Conan via cmake-conan
-
-If your project uses [cmake-conan](https://github.com/tnt-coders/cmake-conan) (the tnt-coders fork), PackageBuilder can be pulled in as a Conan dependency with zero manual installation.
+If your project uses [cmake-conan](https://github.com/tnt-coders/cmake-conan) (the tnt-coders fork), this is the recommended way to consume PackageBuilder. Dependencies are resolved automatically with no manual installation.
 
 Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/1.0.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git")
+    self.requires("cmake-package-builder/1.0.0") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
@@ -82,7 +40,51 @@ find_package(PackageBuilder REQUIRED)
 include(PackageBuilder)
 ```
 
-For full details on how cmake-conan and the recipe tag work, see the [cmake-conan repository](https://github.com/tnt-coders/cmake-conan).
+For full details on how cmake-conan and the recipe tag work, see the tnt-coders fork of the [cmake-conan](https://github.com/tnt-coders/cmake-conan) repository.
+
+### Method 2: FetchContent (Simplest)
+
+The simplest way to get started. No installation or package manager required.
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(MyProject LANGUAGES CXX)
+
+include(FetchContent)
+FetchContent_Declare(
+    PackageBuilder
+    GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(PackageBuilder)
+
+include(PackageBuilder)
+```
+
+This allows you to immediately hit the ground running with professional quality install/package creation logic for your own project.
+
+### Method 3: find_package (Classic)
+
+Build and install PackageBuilder to your system, then find it like any other CMake package.
+
+**Install:**
+
+```
+git clone https://github.com/tnt-coders/cmake-package-builder
+cd cmake-package-builder
+cmake -B build
+cmake --install build
+```
+
+**Consume:**
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(MyProject LANGUAGES CXX)
+
+find_package(PackageBuilder REQUIRED)
+include(PackageBuilder)
+```
 
 ---
 
@@ -123,7 +125,7 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 
 Libraries created with `package_add_library` are automatically given a namespaced alias of `<PROJECT_NAME>::<target>`. This is the same alias that downstream consumers will use after `find_package()`.
 
-### Install
+### Generate Package Install Logic
 
 ```cmake
 package_install()
@@ -191,9 +193,3 @@ target_link_libraries(awesome_app PRIVATE MyAwesomeLib::awesome)
 # Install everything
 package_install()
 ```
-
----
-
-## License
-
-MIT
