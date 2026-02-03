@@ -2,7 +2,8 @@
 
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Versioning, installation, package config generation, and Conan integration—all handled automatically.
 
----
+> [!IMPORTANT]
+> PackageBuilder expects a [canonical CMake project structure](#project-structure) to function correctly.
 
 ## Prerequisites
 
