@@ -17,11 +17,6 @@ class CMakePackageBuilderConan(ConanFile):
 
     def generate(self):
         tc = CMakeToolchain(self)
-
-        # Passes the version to CMake when running from conan create
-        if self.version:
-            tc.variables["PROJECT_VERSION"] = self.version
-        
         tc.generate()
 
         deps = CMakeDeps(self)
