@@ -1,5 +1,5 @@
 from conan import ConanFile
-from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout
+from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 import os
 
 class CMakePackageBuilderConan(ConanFile):
@@ -18,6 +18,9 @@ class CMakePackageBuilderConan(ConanFile):
     def generate(self):
         tc = CMakeToolchain(self)
         tc.generate()
+
+        deps = CMakeDeps(self)
+        deps.generate()
 
     def build(self):
         cmake = CMake(self)
