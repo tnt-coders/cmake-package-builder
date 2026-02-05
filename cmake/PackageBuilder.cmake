@@ -54,9 +54,6 @@ function(package_add_library target)
             ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 
-    message("SETTING INCLUDE DIRECTORY: ${CMAKE_CURRENT_SOURCE_DIR}/include")
-    message("INSTALL DIR: ${CMAKE_INSTALL_INCLUDEDIR}")
-
     set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
     set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
