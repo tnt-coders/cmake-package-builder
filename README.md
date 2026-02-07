@@ -1,5 +1,7 @@
 # PackageBuilder
 
+[![Build](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/ci.yml)
+
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Versioning, installation, package config generation, and Conan integration—all handled automatically.
 
 > [!IMPORTANT]
@@ -91,7 +93,7 @@ include(PackageBuilder)
 
 ## Usage
 
-### Initialize
+### Create The Package
 
 **Required.** Must be called before any other PackageBuilder functions.
 
@@ -99,17 +101,10 @@ include(PackageBuilder)
 package_create()
 ```
 
-If `PROJECT_VERSION` is not already set (e.g. via the `project()` command), `package_create()` automatically extracts the version from Git tags. Tags must follow the format `v<MAJOR>.<MINOR>.<PATCH>`. The following variables are set:
+This function performs essential setup before any targets are defined:
 
-| Variable | Description |
-|----------|-------------|
-| `PROJECT_VERSION` | Full version string (e.g. `1.2.3`) |
-| `PROJECT_VERSION_MAJOR` | Major version number |
-| `PROJECT_VERSION_MINOR` | Minor version number |
-| `PROJECT_VERSION_PATCH` | Patch version number |
-| `PROJECT_VERSION_TWEAK` | Number of commits since the last tag |
-| `PROJECT_VERSION_IS_DIRTY` | `TRUE` if there are uncommitted local changes |
-| `PROJECT_VERSION_HASH` | Full commit hash |
+- **Conan integration:** If the project uses [cmake-conan](https://github.com/tnt-coders/cmake-conan), `package_create()` issues a dummy `find_package()` call to ensure Conan's dependency provider is invoked. This is necessary because cmake-conan triggers on the first `find_package()` call, and without it projects that have no dependencies would never invoke Conan at all.
+- **Version verification:** Verifies that `PROJECT_VERSION` is set and fails with a fatal error if it is not. `PROJECT_VERSION` is typically set by specifying the version in the `project()` command.
 
 ### Add Targets
 
@@ -172,17 +167,11 @@ MyProject/
 cmake_minimum_required(VERSION 3.24)
 project(MyAwesomeLib LANGUAGES CXX)
 
-include(FetchContent)
-FetchContent_Declare(
-    PackageBuilder
-    GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(PackageBuilder)
-
+# Or use FetchContent if the package is not installed
+find_package(PackageBuilder REQUIRED)
 include(PackageBuilder)
 
-# Initialize — pulls version from Git tags automatically
+# Create the package — verifies version and triggers Conan if applicable
 package_create()
 
 # Create targets
