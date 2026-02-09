@@ -3,7 +3,7 @@ repos:
     rev: v0.6.13
     hooks:
       - id: cmake-format
-        args: [--config-files, project-config/.cmake-format.py, --check]
+        args: [--config-files=project-config/.cmake-format.py, --in-place]
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v19.1.6
     hooks:
