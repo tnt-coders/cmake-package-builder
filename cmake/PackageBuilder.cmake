@@ -25,6 +25,18 @@ function(package_create)
         message(FATAL_ERROR "Package version could not be determined.")
     endif()
 
+    # Search the project for a .clang-tidy file Account for projects that use a shared .clang-tidy
+    # config from https://github.com/tnt-coders/project-config
+    find_file(
+        CLANG_TIDY_FILE .clang-tidy
+        PATHS "${CMAKE_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/project-config"
+        NO_DEFAULT_PATH)
+    if(CLANG_TIDY_FILE)
+        set(CMAKE_EXPORT_COMPILE_COMMANDS
+            ON
+            CACHE BOOL "" FORCE)
+    endif()
+
     set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
 endfunction()
 
