@@ -8,4 +8,4 @@ on:
 
 jobs:
   build:
-    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan.yml@master
+    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@master
