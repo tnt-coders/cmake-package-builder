@@ -10,7 +10,7 @@ class CMakePackageBuilderConan(ConanFile):
     description = "CMake utility functions for simplified project setup/installation"
     package_type = "build-scripts"
     settings = "os", "compiler", "build_type", "arch"
-    exports_sources = "CMakeLists.txt", "cmake/*"
+    exports_sources = "CMakeLists.txt", "cmake/*", "project-config/*"
 
     def layout(self):
         cmake_layout(self)
