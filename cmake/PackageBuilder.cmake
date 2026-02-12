@@ -14,13 +14,7 @@ endfunction()
 
 function(package_create)
 
-    # If the project uses cmake-conan make sure Conan has been invoked to avoid an error Conan is
-    # invoke on the first call to "find_package()" This line only exists to prevent it from
-    # complaining about projects that don't consume packages
-    if(EXISTS ${PROJECT_SOURCE_DIR}/cmake-conan/conan_provider.cmake)
-        find_package(__CONAN_DUMMY__ QUIET)
-    endif()
-
+    # Require project version
     if(NOT PROJECT_VERSION)
         message(FATAL_ERROR "Package version could not be determined.")
     endif()
