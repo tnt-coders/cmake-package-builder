@@ -6,8 +6,6 @@ project(
     VERSION 1.0.0
     LANGUAGES C CXX)
 
-add_subdirectory(project-config)
-
 # Include our own modules
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(PackageBuilder)
