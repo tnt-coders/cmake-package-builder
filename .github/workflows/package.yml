@@ -7,5 +7,5 @@ on:
     branches: [master]
 
 jobs:
-  conan-create:
+  package:
     uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-package.yml@master
