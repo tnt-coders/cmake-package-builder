@@ -1,6 +1,6 @@
 # PackageBuilder
 
-[![Verify](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/verify.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/verify.yml)
+[![Pre-Commit](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/pre-commit.yml)
 [![Build](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml)
 [![Package](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/package.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/package.yml)
 
