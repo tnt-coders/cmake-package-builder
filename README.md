@@ -1,8 +1,6 @@
 # PackageBuilder
 
-[![Pre-Commit](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/pre-commit.yml)
 [![Build](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml)
-[![Package](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/package.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/package.yml)
 
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation—all handled automatically.
 
