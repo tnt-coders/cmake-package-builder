@@ -131,4 +131,38 @@ function(package_install)
 
     # Install config files for the project
     install(FILES ${install_files} DESTINATION ${install_destination})
+
+    # CPack configuration
+    set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
+    set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
+
+    # Normalize system name: linux-x86_64, macos-arm64, windows-x86_64, etc.
+    string(TOLOWER "${CMAKE_SYSTEM_NAME}" _os)
+    if(_os STREQUAL "darwin")
+        set(_os "macos")
+    endif()
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _arch)
+    if(_arch MATCHES "amd64")
+        set(_arch "x86_64")
+    elseif(_arch MATCHES "arm64|aarch64")
+        set(_arch "arm64")
+    endif()
+    set(CPACK_SYSTEM_NAME "${_os}-${_arch}")
+    set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}-${_os}-${_arch}")
+
+    # Both ZIP and native installer per platform
+    if(WIN32)
+        set(CPACK_GENERATOR "ZIP;NSIS")
+        set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+        set(CPACK_NSIS_MODIFY_PATH ON)
+    elseif(APPLE)
+        set(CPACK_GENERATOR "ZIP;DragNDrop")
+    else()
+        set(CPACK_GENERATOR "ZIP;DEB")
+        set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
+    endif()
+
+    include(CPack)
 endfunction()

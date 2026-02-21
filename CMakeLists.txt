@@ -6,6 +6,10 @@ project(
     VERSION 1.0.0
     LANGUAGES C CXX)
 
+# Enable docs
+option(PROJECT_CONFIG_ENABLE_DOCS
+       "Enable docs target generation from project-config when Doxygen is available" ON)
+
 # Add project config
 add_subdirectory(project-config)
 

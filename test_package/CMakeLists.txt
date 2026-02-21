@@ -5,7 +5,7 @@ project(
     LANGUAGES CXX)
 
 # Find the package we're testing
-find_package(PackageBuilder REQUIRED)
+find_package(PackageBuilder REQUIRED CONFIG)
 include(PackageBuilder)
 
 # Test that we can use the PackageBuilder functions This will test that package_create() works
