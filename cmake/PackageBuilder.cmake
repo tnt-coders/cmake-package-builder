@@ -25,6 +25,12 @@ function(package_create)
                         "e.g. project(MyProject DESCRIPTION \"A short summary\")")
     endif()
 
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/LICENSE")
+        message(
+            FATAL_ERROR "A LICENSE file is required at ${PROJECT_SOURCE_DIR}/LICENSE for packaging."
+        )
+    endif()
+
     set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
 endfunction()
 
