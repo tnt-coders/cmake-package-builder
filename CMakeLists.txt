@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 project(
     PackageBuilder
     VERSION 1.0.0
+    DESCRIPTION "Tools to assist with CMake/C++ package development"
     LANGUAGES C CXX)
 
 # Enable docs

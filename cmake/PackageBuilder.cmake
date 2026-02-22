@@ -14,9 +14,15 @@ endfunction()
 
 function(package_create)
 
-    # Require project version
     if(NOT PROJECT_VERSION)
-        message(FATAL_ERROR "Package version could not be determined.")
+        message(FATAL_ERROR "PROJECT_VERSION is not set. Add a VERSION to your project() call, "
+                            "e.g. project(MyProject VERSION 1.0.0)")
+    endif()
+
+    if(NOT PROJECT_DESCRIPTION)
+        message(
+            FATAL_ERROR "PROJECT_DESCRIPTION is not set. Add a DESCRIPTION to your project() call, "
+                        "e.g. project(MyProject DESCRIPTION \"A short summary\")")
     endif()
 
     set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
