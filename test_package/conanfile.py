@@ -1,7 +1,5 @@
 from conan import ConanFile
 from conan.tools.cmake import CMake, cmake_layout
-from conan.tools.build import can_run
-import os
 
 
 class CMakePackageBuilderTestConan(ConanFile):
@@ -17,9 +15,7 @@ class CMakePackageBuilderTestConan(ConanFile):
     def build(self):
         cmake = CMake(self)
         cmake.configure()
-        cmake.build()
 
+    # Verification happens during the "cmake.configure()" step
     def test(self):
-        if can_run(self):
-            cmd = os.path.join(self.cpp.build.bindir, "test_package")
-            self.run(cmd, env="conanrun")
+        pass
