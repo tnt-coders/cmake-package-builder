@@ -10,13 +10,14 @@ class CMakePackageBuilderConan(ConanFile):
     description = "CMake utility functions for simplified project setup/installation"
     package_type = "build-scripts"
     settings = "os", "compiler", "build_type", "arch"
-    exports_sources = "CMakeLists.txt", "cmake/*", "project-config/*", "LICENSE"
+    exports_sources = "CMakeLists.txt", "cmake/*", "LICENSE"
 
     def layout(self):
         cmake_layout(self)
 
     def generate(self):
         tc = CMakeToolchain(self)
+        tc.variables["INCLUDE_PROJECT_CONFIG"] = False
         tc.generate()
 
         deps = CMakeDeps(self)

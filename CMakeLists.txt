@@ -7,12 +7,17 @@ project(
     DESCRIPTION "Tools for working with Wwise file types"
     LANGUAGES C CXX)
 
-# Enable docs
-option(PROJECT_CONFIG_ENABLE_DOCS
-       "Enable docs target generation from project-config when Doxygen is available" ON)
+# Add project config (disabled for Conan builds where project-config is not exported)
+option(INCLUDE_PROJECT_CONFIG "Include project-config for docs, linting, and CMake presets" ON)
+if(INCLUDE_PROJECT_CONFIG)
 
-# Add project config
-add_subdirectory(project-config)
+    # Set project-config specific options
+    option(PROJECT_CONFIG_ENABLE_DOCS "Enable docs target when Doxygen is available" ON)
+    option(PROJECT_CONFIG_ENABLE_CLANG_TIDY
+           "Enable clang-tidy target when run-clang-tidy is available" OFF)
+
+    add_subdirectory(project-config)
+endif()
 
 # Include our own modules
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
