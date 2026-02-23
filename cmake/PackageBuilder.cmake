@@ -3,6 +3,23 @@ include_guard(GLOBAL)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
+function(_package_collect_runtime_targets out_var)
+    set(runtime_targets)
+    foreach(target IN LISTS ARGN)
+        if(TARGET ${target})
+            get_target_property(target_type ${target} TYPE)
+            if(target_type STREQUAL "EXECUTABLE"
+               OR target_type STREQUAL "SHARED_LIBRARY"
+               OR target_type STREQUAL "MODULE_LIBRARY")
+                list(APPEND runtime_targets ${target})
+            endif()
+        endif()
+    endforeach()
+    set(${out_var}
+        "${runtime_targets}"
+        PARENT_SCOPE)
+endfunction()
+
 function(_package_check_initialized)
     get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITALIZED)
     if(NOT package_initialized)
@@ -68,15 +85,21 @@ function(package_install)
     _package_check_initialized()
 
     get_property(targets GLOBAL PROPERTY ${PROJECT_NAME}_TARGETS)
+    _package_collect_runtime_targets(runtime_targets ${targets})
 
     # Set the install destination and namespace
     set(install_destination "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
     if(targets)
+        set(runtime_dep_arg)
+        if(runtime_targets)
+            set(runtime_dep_arg RUNTIME_DEPENDENCY_SET ${PROJECT_NAME}RuntimeDeps)
+        endif()
+
         # Create an export package of the targets Use GNUInstallDirs and COMPONENTS See "Deep CMake
         # for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
         install(
-            TARGETS ${targets}
+            TARGETS ${targets} ${runtime_dep_arg}
             EXPORT ${PROJECT_NAME}Targets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
             INCLUDES
@@ -87,11 +110,49 @@ function(package_install)
                     NAMELINK_COMPONENT Development
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
+        if(runtime_targets)
+            # Regexes matched against the *unresolved* dependency name (skips disk lookup entirely)
+            set(_pre_exclude_regexes
+                [=[api-ms-]=] # Windows API sets
+                [=[ext-ms-]=] # Windows extension sets
+                [=[kernel32\.dll]=]
+                [=[ntdll\.dll]=]
+                [=[libc\.so\.]=] # Linux glibc
+                [=[libgcc_s\.so\.]=]
+                [=[libm\.so\.]=]
+                [=[libstdc\+\+\.so\.]=]
+                [=[libpthread\.so\.]=] # no-op on glibc 2.34+ (merged into libc)
+                [=[libdl\.so\.]=] # same
+                [=[librt\.so\.]=] # same
+                [=[ld-linux.*\.so\.]=] # dynamic linker
+            )
+
+            # Regexes matched against the *resolved* full path (catch-all safety net)
+            set(_post_exclude_regexes
+                [=[.*[/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\][Ss][Yy][Ss][Tt][Ee][Mm]32[/\\].*]=]
+                [=[^/lib]=] # Linux system libs
+                [=[^/usr/lib]=] # Linux multiarch + macOS system libs
+                [=[^/System/Library]=] # macOS system frameworks
+            )
+
+            install(
+                RUNTIME_DEPENDENCY_SET
+                ${PROJECT_NAME}RuntimeDeps
+                DESTINATION
+                ${CMAKE_INSTALL_BINDIR}
+                COMPONENT
+                Runtime
+                PRE_EXCLUDE_REGEXES
+                ${_pre_exclude_regexes}
+                POST_EXCLUDE_REGEXES
+                ${_post_exclude_regexes})
+        endif()
+
         # Install the export package
         install(
             EXPORT ${PROJECT_NAME}Targets
             FILE ${PROJECT_NAME}Targets.cmake
-            NAMESPACE ${args_NAMESPACE}
+            NAMESPACE ${PROJECT_NAME}::
             DESTINATION ${install_destination})
     endif()
 
@@ -164,7 +225,21 @@ function(package_install)
     set(CPACK_SYSTEM_NAME "${_os}-${_arch}")
     set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}-${_os}-${_arch}")
 
-    # Both ZIP and native installer per platform
+    if(NOT runtime_targets)
+        message(
+            STATUS
+                "No runtime targets found for ${PROJECT_NAME}; skipping CPack package generation.")
+        return()
+    endif()
+
+    # Both ZIP and native installer per platform. Installers should ship runtime artifacts by
+    # default (apps/shared runtime), not development files such as headers/static libraries/CMake
+    # package metadata.
+    if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS_ALL)
+        set(PACKAGE_BUILDER_CPACK_COMPONENTS_ALL Runtime)
+    endif()
+    set(CPACK_COMPONENTS_ALL ${PACKAGE_BUILDER_CPACK_COMPONENTS_ALL})
+
     if(WIN32)
         set(CPACK_GENERATOR "ZIP;NSIS")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
