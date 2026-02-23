@@ -141,6 +141,31 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 
 ---
 
+## Packaging Behavior
+
+`package_install()` configures [CPack](https://cmake.org/cmake/help/latest/module/CPack.html) to generate platform-native installers:
+
+| Platform | Generators     |
+|----------|---------------|
+| Windows  | ZIP, NSIS      |
+| macOS    | ZIP, DragNDrop |
+| Linux    | ZIP, DEB       |
+
+### Runtime-only installers
+
+By default, generated installers include only **Runtime** components (executables and shared libraries). Development files such as static libraries, headers, and CMake package config are excluded from installers because [Conan](https://conan.io/) is the preferred method for consuming packages as libraries during development.
+
+### Including development components
+
+If your project needs installers that also ship development files, set `PACKAGE_BUILDER_CPACK_COMPONENTS` before calling `package_install()`:
+
+```cmake
+set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Development)
+package_install()
+```
+
+---
+
 ## Project Structure
 
 PackageBuilder expects your project to follow this layout:

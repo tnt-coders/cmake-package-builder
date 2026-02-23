@@ -235,10 +235,10 @@ function(package_install)
     # Both ZIP and native installer per platform. Installers should ship runtime artifacts by
     # default (apps/shared runtime), not development files such as headers/static libraries/CMake
     # package metadata.
-    if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS_ALL)
-        set(PACKAGE_BUILDER_CPACK_COMPONENTS_ALL Runtime)
+    if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS)
+        set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime)
     endif()
-    set(CPACK_COMPONENTS_ALL ${PACKAGE_BUILDER_CPACK_COMPONENTS_ALL})
+    set(CPACK_COMPONENTS_ALL ${PACKAGE_BUILDER_CPACK_COMPONENTS})
 
     if(WIN32)
         set(CPACK_GENERATOR "ZIP;NSIS")
