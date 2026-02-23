@@ -21,7 +21,7 @@ function(_package_collect_runtime_targets out_var)
 endfunction()
 
 function(_package_check_initialized)
-    get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITALIZED)
+    get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITIALIZED)
     if(NOT package_initialized)
         message(
             FATAL_ERROR "package_create() must be called before all other PackageBuilder functions."
@@ -48,7 +48,7 @@ function(package_create)
         )
     endif()
 
-    set_property(GLOBAL PROPERTY PACKAGE_INITALIZED TRUE)
+    set_property(GLOBAL PROPERTY PACKAGE_INITIALIZED TRUE)
 endfunction()
 
 function(package_add_executable target)

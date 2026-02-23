@@ -5,7 +5,7 @@
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation—all handled automatically.
 
 > [!IMPORTANT]
-> PackageBuilder expects a [canonical CMake project structure](#project-structure) to function correctly.
+> PackageBuilder assumes a [canonical CMake project structure](#project-structure) for its default behavior.
 
 ## Prerequisites
 
@@ -100,9 +100,11 @@ include(PackageBuilder)
 package_create()
 ```
 
-This function performs essential setup before any targets are defined:
+This function performs essential validation before any targets are defined:
 
 - **Version verification:** Verifies that `PROJECT_VERSION` is set and fails with a fatal error if it is not. `PROJECT_VERSION` is typically set by specifying the version in the `project()` command.
+- **Description verification:** Verifies that `PROJECT_DESCRIPTION` is set and fails with a fatal error if it is not. Set via the `DESCRIPTION` argument in the `project()` command.
+- **License verification:** Verifies that a `LICENSE` file exists at the project root. This is required for CPack packaging.
 
 ### Add Targets
 
@@ -168,7 +170,7 @@ package_install()
 
 ## Project Structure
 
-PackageBuilder expects your project to follow this layout:
+PackageBuilder is designed to work with the following project layout:
 
 ```
 MyProject/
@@ -188,13 +190,13 @@ MyProject/
 
 ```cmake
 cmake_minimum_required(VERSION 3.24)
-project(MyAwesomeLib VERSION 1.0.0 LANGUAGES CXX)
+project(MyAwesomeLib VERSION 1.0.0 DESCRIPTION "An awesome library" LANGUAGES CXX)
 
 # Or use FetchContent if the package is not installed
 find_package(PackageBuilder REQUIRED)
 include(PackageBuilder)
 
-# Create the package — verifies version is set
+# Create the package — validates version, description, and license
 package_create()
 
 # Create targets
