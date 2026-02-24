@@ -1,11 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
 
-# Specify CXX as the language even though it is purely CMake to make cmake-conan happy
 project(
     PackageBuilder
     VERSION 1.0.0
-    DESCRIPTION "Tools to assist with CMake/C++ package development"
-    LANGUAGES C CXX)
+    DESCRIPTION "Tools to assist with CMake/C++ package development")
 
 # Add project config (disabled for Conan builds where project-config is not exported)
 option(INCLUDE_PROJECT_CONFIG "Include project-config for docs, linting, and CMake presets" ON)
