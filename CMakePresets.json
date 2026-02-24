@@ -1,19 +1,22 @@
 {
     "version": 7,
     "include": [
-        "project-config/cmake-presets/default.json"
+        "project-config/cmake-presets/default.json",
+        "project-config/cmake-presets/conan.json"
     ],
     "configurePresets": [
         {
             "name": "debug",
             "inherits": [
-                "default-debug"
+                "default-debug",
+                "conan-debug"
             ]
         },
         {
             "name": "release",
             "inherits": [
-                "default-release"
+                "default-release",
+                "conan-release"
             ]
         }
     ],
@@ -22,14 +25,16 @@
             "name": "debug",
             "configurePreset": "debug",
             "inherits": [
-                "default-debug"
+                "default-debug",
+                "conan-debug"
             ]
         },
         {
             "name": "release",
             "configurePreset": "release",
             "inherits": [
-                "default-release"
+                "default-release",
+                "conan-release"
             ]
         }
     ],
@@ -38,14 +43,16 @@
             "name": "debug",
             "configurePreset": "debug",
             "inherits": [
-                "default-debug"
+                "default-debug",
+                "conan-debug"
             ]
         },
         {
             "name": "release",
             "configurePreset": "release",
             "inherits": [
-                "default-release"
+                "default-release",
+                "conan-release"
             ]
         }
     ]
