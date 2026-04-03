@@ -28,9 +28,13 @@ def requirements(self):
 
 Or in `conanfile.txt`:
 
-```
+```ini
 [requires]
 cmake-package-builder/1.0.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+
+[generators]
+CMakeDeps
+CMakeToolchain
 ```
 
 The `#recipe:` tag tells cmake-conan where to find the source for the package. If the package is not already present in your local Conan cache or any configured remote, cmake-conan will automatically clone the tagged version from the provided git URL and run `conan create` to build it locally. No manual recipe hosting or remote setup needed.
