@@ -3,6 +3,56 @@ include_guard(GLOBAL)
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
+# Fails fast if package_create() has not been called before other PackageBuilder entry points.
+function(_package_check_initialized)
+    get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITIALIZED)
+    if(NOT package_initialized)
+        message(
+            FATAL_ERROR "package_create() must be called before all other PackageBuilder functions."
+        )
+    endif()
+endfunction()
+
+# Converts caller-provided header root paths to absolute paths before storing them as install
+# metadata.
+function(_package_make_paths_absolute out_var)
+    # Public header roots may be passed relative to the caller's CMakeLists, so normalise them once
+    # here before storing install metadata globally.
+    set(absolute_paths)
+    foreach(path IN LISTS ARGN)
+        if(IS_ABSOLUTE "${path}")
+            list(APPEND absolute_paths "${path}")
+        else()
+            list(APPEND absolute_paths "${CMAKE_CURRENT_SOURCE_DIR}/${path}")
+        endif()
+    endforeach()
+    set(${out_var}
+        "${absolute_paths}"
+        PARENT_SCOPE)
+endfunction()
+
+# Records an existing target for install/export handling and optionally tracks public header roots
+# for header installation. This helper must not mutate target build settings.
+function(_package_register_target_impl target)
+    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_REGISTER "" "" "PUBLIC_HEADER_DIRS")
+
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "Target '${target}' does not exist and cannot be registered.")
+    endif()
+
+    # External targets may already be fully configured, so registration only records packaging
+    # metadata and must not mutate build properties such as include paths or sources.
+    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
+
+    if(PACKAGE_REGISTER_PUBLIC_HEADER_DIRS)
+        _package_make_paths_absolute(public_header_dirs ${PACKAGE_REGISTER_PUBLIC_HEADER_DIRS})
+        set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS
+                                            ${public_header_dirs})
+    endif()
+endfunction()
+
+# Filters a target list down to runtime-bearing targets that should contribute executable/shared
+# artifacts to installers and runtime dependency collection.
 function(_package_collect_runtime_targets out_var)
     set(runtime_targets)
     foreach(target IN LISTS ARGN)
@@ -20,15 +70,8 @@ function(_package_collect_runtime_targets out_var)
         PARENT_SCOPE)
 endfunction()
 
-function(_package_check_initialized)
-    get_property(package_initialized GLOBAL PROPERTY PACKAGE_INITIALIZED)
-    if(NOT package_initialized)
-        message(
-            FATAL_ERROR "package_create() must be called before all other PackageBuilder functions."
-        )
-    endif()
-endfunction()
-
+# Validates that the project has the minimum metadata needed for packaging and marks the module as
+# initialized.
 function(package_create)
 
     if(NOT PROJECT_VERSION)
@@ -51,18 +94,32 @@ function(package_create)
     set_property(GLOBAL PROPERTY PACKAGE_INITIALIZED TRUE)
 endfunction()
 
+# Registers a target created outside PackageBuilder so it participates in install/export/CPack
+# generation.
+function(package_register_target target)
+    _package_check_initialized()
+    # This is the low-level integration point for targets created outside PackageBuilder.
+    _package_register_target_impl(${target} ${ARGN})
+endfunction()
+
+# Creates and registers an executable target using PackageBuilder's conventional private include
+# defaults for application-style layouts.
 function(package_add_executable target)
     _package_check_initialized()
 
     add_executable(${target} ${ARGN})
 
-    # Executables don't need to publicly expose headers so all headers are private
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                                 ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # Executables don't need a public header surface, but adding the project root keeps app-style
+    # layouts working without extra include boilerplate.
+    target_include_directories(
+        ${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include
+                          ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
+    _package_register_target_impl(${target})
 endfunction()
 
+# Creates and registers a library target, wiring conventional public/private include paths and the
+# default public header installation root.
 function(package_add_library target)
     _package_check_initialized()
 
@@ -72,15 +129,19 @@ function(package_add_library target)
         ${target}
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        # The source-tree root is a build-time convenience only. Consumers still see just the
+        # installed public include directory.
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_TARGETS ${target})
-    set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS
-                                        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    # Libraries created by PackageBuilder use the conventional include/ directory as installable
+    # public headers without requiring a separate registration call.
+    _package_register_target_impl(${target} PUBLIC_HEADER_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_library(${PROJECT_NAME}::${target} ALIAS ${target})
 endfunction()
 
+# Generates install rules, package config files, and CPack configuration for all registered targets
+# and public header roots in the current project.
 function(package_install)
     _package_check_initialized()
 
@@ -102,6 +163,9 @@ function(package_install)
             TARGETS ${targets} ${runtime_dep_arg}
             EXPORT ${PROJECT_NAME}Targets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
+                    # GUI applications may be packaged as bundles on Apple platforms, so keep bundle
+                    # payloads in the runtime component alongside normal executables.
+            BUNDLE DESTINATION . COMPONENT Runtime
             INCLUDES
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             COMPONENT Development
@@ -148,7 +212,7 @@ function(package_install)
                 ${_post_exclude_regexes})
         endif()
 
-        # Install the export package
+        # Export metadata is a development artifact and should stay out of runtime-only installers.
         install(
             EXPORT ${PROJECT_NAME}Targets
             FILE ${PROJECT_NAME}Targets.cmake

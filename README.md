@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml)
 
-**Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation—all handled automatically.
+**Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation all handled automatically.
 
 > [!IMPORTANT]
 > PackageBuilder assumes a [canonical CMake project structure](#project-structure) for its default behavior.
@@ -125,6 +125,48 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 
 Libraries created with `package_add_library` are automatically given a namespaced alias of `<PROJECT_NAME>::<target>`. This is the same alias that downstream consumers will use after `find_package()`.
 
+Targets created with `package_add_library` and `package_add_executable` automatically receive
+these private include directories:
+
+- `${CMAKE_CURRENT_SOURCE_DIR}`
+- `${CMAKE_CURRENT_SOURCE_DIR}/include`
+- `${CMAKE_CURRENT_SOURCE_DIR}/src`
+
+For libraries, only `${CMAKE_CURRENT_SOURCE_DIR}/include` is exposed publicly. The project root is
+a build-time convenience only and is not exported to consumers.
+
+### Register Existing Targets
+
+If your target is created outside PackageBuilder, such as by another CMake helper, register it for
+install, export, and CPack handling with `package_register_target`:
+
+```cmake
+juce_add_gui_app(my_app PRODUCT_NAME "My App" VERSION ${PROJECT_VERSION})
+target_sources(my_app PRIVATE main.cpp)
+target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+package_register_target(my_app)
+```
+
+For externally created libraries, use `PUBLIC_HEADER_DIRS` to tell PackageBuilder which public
+header roots should be installed:
+
+```cmake
+add_library(my_lib)
+target_sources(my_lib PRIVATE src/my_lib.cpp)
+target_include_directories(
+    my_lib
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+package_register_target(my_lib PUBLIC_HEADER_DIRS include)
+```
+
+`package_register_target` does not create the target, add sources, add include directories, or
+create a namespaced build-tree alias. Those details remain the responsibility of the project that
+created the target.
+
 ### Generate Package Install Logic
 
 ```cmake
@@ -133,8 +175,10 @@ package_install()
 
 This single call handles everything:
 
-- Installs all targets registered via `package_add_library` and `package_add_executable`
-- Installs public headers from `include/`
+- Installs all targets registered via `package_add_library`, `package_add_executable`, and
+  `package_register_target`
+- Installs public headers from `include/` or any `PUBLIC_HEADER_DIRS` provided while registering
+  external libraries
 - Installs any custom CMake modules from `cmake/`
 - Generates and installs `<ProjectName>Config.cmake` and `<ProjectName>ConfigVersion.cmake`
 
@@ -159,7 +203,11 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 
 ### Runtime-only installers
 
-By default, generated installers include only **Runtime** components (executables and shared libraries). Development files such as static libraries, headers, and CMake package config are excluded from installers because [Conan](https://conan.io/) is the preferred method for consuming packages as libraries during development.
+By default, generated installers are intended to include only **Runtime** components such as
+executables and shared libraries. Development-facing artifacts such as static libraries, headers,
+and CMake package metadata belong to the development install surface because
+[Conan](https://conan.io/) is the preferred method for consuming packages as libraries during
+development.
 
 ### Including development components
 
@@ -174,19 +222,25 @@ package_install()
 
 ## Project Structure
 
-PackageBuilder is designed to work with the following project layout:
+PackageBuilder is designed to work best with the following project layout:
 
 ```
 MyProject/
-├── CMakeLists.txt
-├── cmake/              # Optional: custom CMake modules (auto-installed alongside config files)
-├── include/            # Public headers (auto-installed to the system include directory)
-└── src/                # Private source and header files
+|- CMakeLists.txt
+|- cmake/              # Optional: custom CMake modules (auto-installed alongside config files)
+|- include/            # Public headers (auto-installed to the system include directory)
+`- src/                # Private source and header files
 ```
 
 - Headers in `include/` are exposed publicly to consumers of your library.
+- The project root is also added as a private include directory for targets created by
+  `package_add_library` and `package_add_executable`.
 - Files in `src/` are private to your project and are not installed.
-- Any `.cmake` files in `cmake/` are installed alongside the generated package config, making them available to consumers via `CMAKE_MODULE_PATH`.
+- Any `.cmake` files in `cmake/` are installed alongside the generated package config, making them
+  available to consumers via `CMAKE_MODULE_PATH`.
+
+Projects with non-canonical layouts can still use PackageBuilder by creating targets themselves and
+then registering them with `package_register_target(...)`.
 
 ---
 
@@ -200,7 +254,7 @@ project(MyAwesomeLib VERSION 1.0.0 DESCRIPTION "An awesome library" LANGUAGES CX
 find_package(PackageBuilder REQUIRED)
 include(PackageBuilder)
 
-# Create the package — validates version, description, and license
+# Create the package - validates version, description, and license
 package_create()
 
 # Create targets
@@ -212,3 +266,4 @@ target_link_libraries(awesome_app PRIVATE MyAwesomeLib::awesome)
 # Install everything
 package_install()
 ```
+
