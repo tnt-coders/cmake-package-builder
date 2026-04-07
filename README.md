@@ -201,11 +201,24 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 | macOS    | ZIP, DragNDrop |
 | Linux    | ZIP, DEB       |
 
+Multiple registered applications — including macOS app bundles created by external helpers such as
+`juce_add_gui_app` — are supported in a single package. Each registered runtime target gets its own
+runtime dependency set, so CPack can correctly resolve and bundle the dependencies for every app.
+
+### Install components
+
+PackageBuilder assigns every install artifact to one of two CPack components:
+
+| Component | Contents |
+|-----------|----------|
+| `Runtime` | Executables, macOS app bundles, shared libraries, and their runtime dependencies |
+| `Development` | Static libraries, public headers, CMake package metadata (exported targets, config/version files, custom modules) |
+
 ### Runtime-only installers
 
-By default, generated installers are intended to include only **Runtime** components such as
-executables and shared libraries. Development-facing artifacts such as static libraries, headers,
-and CMake package metadata belong to the development install surface because
+By default, generated installers include only the **Runtime** component: executables, app bundles,
+and shared libraries. Development-facing artifacts such as static libraries, public headers, exported
+CMake target definitions, and package config files are excluded because
 [Conan](https://conan.io/) is the preferred method for consuming packages as libraries during
 development.
 

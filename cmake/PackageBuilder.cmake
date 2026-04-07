@@ -142,6 +142,22 @@ endfunction()
 
 # Generates install rules, package config files, and CPack configuration for all registered targets
 # and public header roots in the current project.
+#
+# HOW CPack COMPONENTS WORK
+# --------------------------
+# CPack uses "components" to categorize install() rules. When you run `cpack`, it inspects
+# CPACK_COMPONENTS_ALL to decide which install() rules to include in the package. Rules that belong
+# to a component not listed in CPACK_COMPONENTS_ALL are silently excluded.
+#
+# PackageBuilder defines two components. The Runtime component holds executables, macOS app bundles,
+# shared libraries, and their transitive runtime dependencies — everything an end user needs to run
+# the application. The Development component holds static libraries, public headers, CMake exported
+# target definitions, and generated package config files — everything needed to compile against this
+# project as a library.
+#
+# By default, CPACK_COMPONENTS_ALL is set to "Runtime" so generated installers ship only what end
+# users need. To also ship development files, set PACKAGE_BUILDER_CPACK_COMPONENTS to "Runtime
+# Development" before calling package_install().
 function(package_install)
     _package_check_initialized()
 
@@ -152,30 +168,46 @@ function(package_install)
     set(install_destination "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
     if(targets)
-        set(runtime_dep_arg)
-        if(runtime_targets)
-            set(runtime_dep_arg RUNTIME_DEPENDENCY_SET ${PROJECT_NAME}RuntimeDeps)
+        # -------------------------------------------------------------------
+        # Separate registered targets into two groups.
+        #
+        # Runtime targets (EXECUTABLE, SHARED_LIBRARY, MODULE_LIBRARY) each need their own
+        # per-target install() call with a unique RUNTIME_DEPENDENCY_SET, explained in Group B.
+        # Non-runtime targets (STATIC_LIBRARY, OBJECT_LIBRARY, INTERFACE_LIBRARY) share one
+        # install() call with no dependency set, but still contribute to the export so
+        # find_package() consumers can link against them.
+        # -------------------------------------------------------------------
+        set(non_runtime_targets ${targets})
+        foreach(rt_target IN LISTS runtime_targets)
+            list(REMOVE_ITEM non_runtime_targets ${rt_target})
+        endforeach()
+
+        # -------------------------------------------------------------------
+        # Group A: Non-runtime targets (static/object/interface libraries).
+        #
+        # ARCHIVE installs the .a / .lib file into the Development component. INCLUDES DESTINATION
+        # annotates the export entry with the public include path so downstream consumers get the
+        # right INTERFACE_INCLUDE_DIRECTORIES from find_package() without needing a separate
+        # target_include_directories().
+        # -------------------------------------------------------------------
+        if(non_runtime_targets)
+            install(
+                TARGETS ${non_runtime_targets}
+                EXPORT ${PROJECT_NAME}Targets
+                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
+                INCLUDES
+                DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
         endif()
 
-        # Create an export package of the targets Use GNUInstallDirs and COMPONENTS See "Deep CMake
-        # for Library Authors" https://www.youtube.com/watch?v=m0DwB4OvDXk
-        install(
-            TARGETS ${targets} ${runtime_dep_arg}
-            EXPORT ${PROJECT_NAME}Targets
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
-                    # GUI applications may be packaged as bundles on Apple platforms, so keep bundle
-                    # payloads in the runtime component alongside normal executables.
-            BUNDLE DESTINATION . COMPONENT Runtime
-            INCLUDES
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            COMPONENT Development
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                    COMPONENT Runtime
-                    NAMELINK_COMPONENT Development
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
-
         if(runtime_targets)
-            # Regexes matched against the *unresolved* dependency name (skips disk lookup entirely)
+            # ---------------------------------------------------------------
+            # Pre-build the exclude regex lists used by every runtime dependency set install. These
+            # filters prevent bundling OS-provided libraries that are guaranteed to exist on the
+            # target machine.
+            #
+            # PRE_EXCLUDE_REGEXES match against the unresolved dependency name (fast: no disk lookup
+            # required).
+            # ---------------------------------------------------------------
             set(_pre_exclude_regexes
                 [=[api-ms-]=] # Windows API sets
                 [=[ext-ms-]=] # Windows extension sets
@@ -191,7 +223,8 @@ function(package_install)
                 [=[ld-linux.*\.so\.]=] # dynamic linker
             )
 
-            # Regexes matched against the *resolved* full path (catch-all safety net)
+            # POST_EXCLUDE_REGEXES match against the resolved absolute path (catch-all safety net
+            # for paths that slipped past pre-exclude).
             set(_post_exclude_regexes
                 [=[.*[/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\][Ss][Yy][Ss][Tt][Ee][Mm]32[/\\].*]=]
                 [=[^/lib]=] # Linux system libs
@@ -199,41 +232,91 @@ function(package_install)
                 [=[^/System/Library]=] # macOS system frameworks
             )
 
-            install(
-                RUNTIME_DEPENDENCY_SET
-                ${PROJECT_NAME}RuntimeDeps
-                DESTINATION
-                ${CMAKE_INSTALL_BINDIR}
-                COMPONENT
-                Runtime
-                PRE_EXCLUDE_REGEXES
-                ${_pre_exclude_regexes}
-                POST_EXCLUDE_REGEXES
-                ${_post_exclude_regexes})
+            foreach(rt_target IN LISTS runtime_targets)
+                # -----------------------------------------------------------
+                # Group B: Per-runtime-target install call.
+                #
+                # WHY ONE CALL PER TARGET? CMake's install(TARGETS ...) accepts exactly one
+                # RUNTIME_DEPENDENCY_SET name per call. On macOS, a runtime dependency set may be
+                # associated with at most one app bundle executable. If two bundle targets share one
+                # set, CMake fails: "install A runtime dependency set may only have one bundle
+                # executable"
+                #
+                # The fix is to give each runtime target its own uniquely named dependency set. All
+                # per-target calls still contribute to the same EXPORT name — CMake merges them into
+                # one targets file — so the exported package remains project-wide.
+                #
+                # Archive files (ARCHIVE) go to Development since they are only needed at link time.
+                # App bundles (BUNDLE), shared library binaries (LIBRARY), and other executables
+                # (RUNTIME) go to Runtime. Shared library version symlinks (NAMELINK) go to
+                # Development since only the compiler needs them.
+                # -----------------------------------------------------------
+                set(_dep_set "${PROJECT_NAME}_${rt_target}_RuntimeDeps")
+
+                install(
+                    TARGETS ${rt_target} RUNTIME_DEPENDENCY_SET ${_dep_set}
+                    EXPORT ${PROJECT_NAME}Targets
+                    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
+                    BUNDLE DESTINATION . COMPONENT Runtime
+                    INCLUDES
+                    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+                    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                            COMPONENT Runtime
+                            NAMELINK_COMPONENT Development
+                    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+
+                # -----------------------------------------------------------
+                # Group C: Per-runtime-target dependency set install.
+                #
+                # Each RUNTIME_DEPENDENCY_SET declared in Group B must have a matching
+                # install(RUNTIME_DEPENDENCY_SET ...) call. CMake resolves the transitive shared
+                # library dependencies of the target at install time and copies them to DESTINATION,
+                # applying the exclude filters to skip system-provided libraries.
+                # -----------------------------------------------------------
+                install(
+                    RUNTIME_DEPENDENCY_SET
+                    ${_dep_set}
+                    DESTINATION
+                    ${CMAKE_INSTALL_BINDIR}
+                    COMPONENT
+                    Runtime
+                    PRE_EXCLUDE_REGEXES
+                    ${_pre_exclude_regexes}
+                    POST_EXCLUDE_REGEXES
+                    ${_post_exclude_regexes})
+            endforeach()
         endif()
 
-        # Export metadata is a development artifact and should stay out of runtime-only installers.
+        # Export metadata is a development artifact: it is the generated <ProjectName>Targets.cmake
+        # file that downstream find_package() calls include to get target definitions. It must not
+        # appear in runtime-only installers, so it is tagged COMPONENT Development.
         install(
             EXPORT ${PROJECT_NAME}Targets
             FILE ${PROJECT_NAME}Targets.cmake
             NAMESPACE ${PROJECT_NAME}::
-            DESTINATION ${install_destination})
+            DESTINATION ${install_destination}
+            COMPONENT Development)
     endif()
 
-    # Install public header files for the project
+    # Public headers are consumed at compile time by downstream projects, not at runtime by end
+    # users. Tag them Development so they stay out of release packages.
     get_property(public_header_paths GLOBAL PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS)
     foreach(public_header_path IN LISTS public_header_paths)
         install(
             DIRECTORY ${public_header_path}/
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            COMPONENT Development
             FILES_MATCHING
             PATTERN "*.h*")
     endforeach()
 
-    # Install public CMake modules for the project
+    # Custom CMake modules (cmake/*.cmake) are consumed by downstream CMake projects via
+    # CMAKE_MODULE_PATH after find_package(). They are build-system metadata, not runtime artifacts,
+    # and belong in the Development component.
     install(
         DIRECTORY ${PROJECT_SOURCE_DIR}/cmake/
         DESTINATION ${install_destination}
+        COMPONENT Development
         FILES_MATCHING
         PATTERN "*.cmake")
 
@@ -266,10 +349,21 @@ function(package_install)
 
     list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake)
 
-    # Install config files for the project
-    install(FILES ${install_files} DESTINATION ${install_destination})
+    # The generated Config and ConfigVersion files are consumed by find_package() in downstream
+    # projects. They are CMake package metadata — development artifacts — and must not appear in
+    # runtime-only release installers.
+    install(
+        FILES ${install_files}
+        DESTINATION ${install_destination}
+        COMPONENT Development)
 
+    # -------------------------------------------------------------------
     # CPack configuration
+    #
+    # CPack reads the CPACK_* variables set below and generates platform-native installers (ZIP,
+    # NSIS, DEB, DragNDrop, etc.) from the install() rules defined above. Only install() rules whose
+    # COMPONENT is listed in CPACK_COMPONENTS_ALL are included in the generated package.
+    # -------------------------------------------------------------------
     set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
@@ -296,9 +390,12 @@ function(package_install)
         return()
     endif()
 
-    # Both ZIP and native installer per platform. Installers should ship runtime artifacts by
-    # default (apps/shared runtime), not development files such as headers/static libraries/CMake
-    # package metadata.
+    # CPACK_COMPONENTS_ALL tells CPack which component buckets to include in the generated
+    # installer. Only install() rules tagged with one of these components will be packaged.
+    #
+    # Default: Runtime only — release installers ship app executables and shared libraries but not
+    # headers, static libs, or CMake package metadata. Set PACKAGE_BUILDER_CPACK_COMPONENTS to
+    # "Runtime Development" before calling package_install() to include both.
     if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS)
         set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime)
     endif()
