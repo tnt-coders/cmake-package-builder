@@ -307,6 +307,7 @@ function(package_install)
                     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
                             COMPONENT Runtime
                             NAMELINK_COMPONENT Development
+                    RESOURCE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
                     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 
                 # -----------------------------------------------------------
