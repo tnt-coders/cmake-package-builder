@@ -119,6 +119,12 @@ package_add_library(mylib src/mylib.cpp)
 # Create an executable
 package_add_executable(myapp src/main.cpp)
 
+# Create an executable with packaging metadata
+package_add_executable(myapp src/main.cpp
+    ICON                 resources/myapp.ico
+    LINUX_DESKTOP_FILE   resources/myapp.desktop
+    LINUX_ICON_THEME_DIR resources/icons)
+
 # Link them together using the namespaced alias
 target_link_libraries(myapp PRIVATE MyProject::mylib)
 ```
@@ -135,17 +141,29 @@ these private include directories:
 For libraries, only `${CMAKE_CURRENT_SOURCE_DIR}/include` is exposed publicly. The project root is
 a build-time convenience only and is not exported to consumers.
 
+`package_add_executable` accepts optional packaging arguments:
+
+| Argument       | Description |
+|----------------|-------------|
+| `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable and also uses it as the NSIS installer/uninstaller icon. Paths may be relative to the calling `CMakeLists.txt`. |
+| `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
+| `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
+
+All other arguments after the target name are forwarded to `add_executable()` as source files.
+
 ### Register Existing Targets
 
-If your target is created outside PackageBuilder, such as by another CMake helper, register it for
-install, export, and CPack handling with `package_register_target`:
+If your target is created outside PackageBuilder, such as by `add_executable` or another CMake
+helper, register it for install, export, and CPack handling with `package_register_target`:
 
 ```cmake
-juce_add_gui_app(my_app PRODUCT_NAME "My App" VERSION ${PROJECT_VERSION})
-target_sources(my_app PRIVATE main.cpp)
+add_executable(my_app main.cpp)
 target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-package_register_target(my_app)
+package_register_target(my_app
+    ICON                 resources/my_app.ico
+    LINUX_DESKTOP_FILE   resources/my_app.desktop
+    LINUX_ICON_THEME_DIR resources/icons)
 ```
 
 For externally created libraries, use `PUBLIC_HEADER_DIRS` to tell PackageBuilder which public
@@ -163,9 +181,13 @@ target_include_directories(
 package_register_target(my_lib PUBLIC_HEADER_DIRS include)
 ```
 
-`package_register_target` does not create the target, add sources, add include directories, or
-create a namespaced build-tree alias. Those details remain the responsibility of the project that
-created the target.
+`package_register_target` accepts the same `ICON`, `LINUX_DESKTOP_FILE`, and
+`LINUX_ICON_THEME_DIR` arguments as
+`package_add_executable`. For externally created targets, `ICON` is packaging metadata only; it is
+used for the NSIS installer/uninstaller icon on Windows, but it does not modify the executable's
+own resources. `package_register_target` does not create the target, add sources, add include
+directories, or create a namespaced build-tree alias. Those details remain the responsibility of
+the project that created the target.
 
 ### Generate Package Install Logic
 
@@ -201,9 +223,9 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 | macOS    | ZIP, DragNDrop |
 | Linux    | ZIP, DEB       |
 
-Multiple registered applications — including macOS app bundles created by external helpers such as
-`juce_add_gui_app` — are supported in a single package. Each registered runtime target gets its own
-runtime dependency set, so CPack can correctly resolve and bundle the dependencies for every app.
+Multiple registered applications — including macOS app bundles created by external CMake helpers —
+are supported in a single package. Each registered runtime target gets its own runtime dependency
+set, so CPack can correctly resolve and bundle the dependencies for every app.
 
 ### Install components
 
@@ -221,6 +243,24 @@ and shared libraries. Development-facing artifacts such as static libraries, pub
 CMake target definitions, and package config files are excluded because
 [Conan](https://conan.io/) is the preferred method for consuming packages as libraries during
 development.
+
+### Desktop shortcuts and launchers
+
+By default, every registered executable gets a desktop shortcut (Windows) or an XDG `.desktop`
+launcher entry (Linux). To limit this to a specific subset, set `PACKAGE_BUILDER_DESKTOP_LINKS` to
+the list of target names that should receive shortcuts before calling `package_install()`:
+
+```cmake
+# Only my_app gets a Start Menu / desktop shortcut
+set(PACKAGE_BUILDER_DESKTOP_LINKS my_app)
+package_install()
+```
+
+| Platform | Behavior |
+|----------|----------|
+| Windows  | Populates `CPACK_PACKAGE_EXECUTABLES` (Start Menu shortcuts) and `CPACK_CREATE_DESKTOP_LINKS` (optional desktop icon checkbox in the installer) for each qualifying executable. The NSIS installer icon is taken from the first registered executable that provides `ICON`. |
+| Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder falls back to looking for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`. |
+| macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
 
 ### Including development components
 
@@ -272,11 +312,73 @@ package_create()
 
 # Create targets
 package_add_library(awesome src/awesome.cpp)
-package_add_executable(awesome_app src/main.cpp)
+package_add_executable(awesome_app src/main.cpp
+    ICON                 resources/awesome_app.ico
+    LINUX_DESKTOP_FILE   resources/awesome_app.desktop
+    LINUX_ICON_THEME_DIR resources/icons)
 
 target_link_libraries(awesome_app PRIVATE MyAwesomeLib::awesome)
 
-# Install everything
+# Give awesome_app a Start Menu / desktop shortcut (Windows), install its
+# .desktop file to share/applications (Linux), and install its icon theme
+# assets to share/icons (Linux)
+set(PACKAGE_BUILDER_DESKTOP_LINKS awesome_app)
 package_install()
 ```
+
+---
+
+## Example: JUCE Application
+
+[JUCE](https://juce.com/) creates GUI app targets via `juce_add_gui_app` rather than
+`add_executable`. Use `package_register_target` to hand the externally-created target off to
+PackageBuilder:
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(MyApp VERSION 1.0.0 DESCRIPTION "A JUCE-based application" LANGUAGES CXX)
+
+find_package(PackageBuilder REQUIRED)
+include(PackageBuilder)
+
+package_create()
+
+# JUCE creates and configures the target internally
+juce_add_gui_app(my_app
+    PRODUCT_NAME "My App"
+    VERSION      ${PROJECT_VERSION}
+    ICON_BIG     resources/my_app.ico
+    ICON_SMALL   resources/my_app.ico)
+
+target_sources(my_app PRIVATE main.cpp)
+target_compile_definitions(my_app PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(my_app PRIVATE juce::juce_gui_basics juce::juce_recommended_warning_flags)
+
+# Register the JUCE target so PackageBuilder includes it in install/CPack output
+package_register_target(my_app
+    ICON                 resources/my_app.ico
+    LINUX_DESKTOP_FILE   resources/my_app.desktop
+    LINUX_ICON_THEME_DIR resources/icons)
+
+# Give my_app a Start Menu / desktop shortcut (Windows), install its .desktop
+# file to share/applications (Linux), and install its icon theme assets to
+# share/icons (Linux)
+set(PACKAGE_BUILDER_DESKTOP_LINKS my_app)
+package_install()
+```
+
+For Linux desktop icons, place PNG files under a standard icon theme layout rooted at the
+directory passed to `LINUX_ICON_THEME_DIR`, for example:
+
+```text
+resources/icons/
+`- hicolor/
+   |- 32x32/apps/my_app.png
+   |- 48x48/apps/my_app.png
+   |- 64x64/apps/my_app.png
+   |- 128x128/apps/my_app.png
+   `- 256x256/apps/my_app.png
+```
+
+Then set `Icon=my_app` in your `.desktop` file, without a file extension.
 

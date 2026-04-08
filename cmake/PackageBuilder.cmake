@@ -32,9 +32,11 @@ function(_package_make_paths_absolute out_var)
 endfunction()
 
 # Records an existing target for install/export handling and optionally tracks public header roots
-# for header installation. This helper must not mutate target build settings.
+# for header installation. Accepts ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR to store
+# per-target packaging metadata. This helper must not mutate target build settings.
 function(_package_register_target_impl target)
-    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_REGISTER "" "" "PUBLIC_HEADER_DIRS")
+    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_REGISTER ""
+                          "ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "PUBLIC_HEADER_DIRS")
 
     if(NOT TARGET ${target})
         message(FATAL_ERROR "Target '${target}' does not exist and cannot be registered.")
@@ -48,6 +50,24 @@ function(_package_register_target_impl target)
         _package_make_paths_absolute(public_header_dirs ${PACKAGE_REGISTER_PUBLIC_HEADER_DIRS})
         set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS
                                             ${public_header_dirs})
+    endif()
+
+    if(PACKAGE_REGISTER_ICON)
+        _package_make_paths_absolute(_icon_abs "${PACKAGE_REGISTER_ICON}")
+        set_target_properties(${target} PROPERTIES PACKAGE_BUILDER_ICON "${_icon_abs}")
+    endif()
+
+    if(PACKAGE_REGISTER_LINUX_DESKTOP_FILE)
+        _package_make_paths_absolute(_desktop_abs "${PACKAGE_REGISTER_LINUX_DESKTOP_FILE}")
+        set_target_properties(${target} PROPERTIES PACKAGE_BUILDER_LINUX_DESKTOP_FILE
+                                                   "${_desktop_abs}")
+    endif()
+
+    if(PACKAGE_REGISTER_LINUX_ICON_THEME_DIR)
+        _package_make_paths_absolute(_desktop_icon_dir_abs
+                                     "${PACKAGE_REGISTER_LINUX_ICON_THEME_DIR}")
+        set_target_properties(${target} PROPERTIES PACKAGE_BUILDER_LINUX_ICON_THEME_DIR
+                                                   "${_desktop_icon_dir_abs}")
     endif()
 endfunction()
 
@@ -103,11 +123,17 @@ function(package_register_target target)
 endfunction()
 
 # Creates and registers an executable target using PackageBuilder's conventional private include
-# defaults for application-style layouts.
+# defaults for application-style layouts. Accepts ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR
+# as packaging metadata; all other arguments are forwarded to add_executable() as sources. When ICON
+# is provided on Windows, PackageBuilder also generates a resource file so the executable itself
+# gets that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
-    add_executable(${target} ${ARGN})
+    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC ""
+                          "ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "")
+
+    add_executable(${target} ${PACKAGE_EXEC_UNPARSED_ARGUMENTS})
 
     # Executables don't need a public header surface, but adding the project root keeps app-style
     # layouts working without extra include boilerplate.
@@ -115,7 +141,25 @@ function(package_add_executable target)
         ${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include
                           ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    _package_register_target_impl(${target})
+    if(WIN32 AND PACKAGE_EXEC_ICON)
+        _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
+        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_icon.rc")
+        file(WRITE "${_rc_file}" "IDI_ICON1 ICON \"${_icon_abs}\"\n")
+        target_sources(${target} PRIVATE "${_rc_file}")
+    endif()
+
+    set(_register_args)
+    if(PACKAGE_EXEC_ICON)
+        list(APPEND _register_args ICON "${PACKAGE_EXEC_ICON}")
+    endif()
+    if(PACKAGE_EXEC_LINUX_DESKTOP_FILE)
+        list(APPEND _register_args LINUX_DESKTOP_FILE "${PACKAGE_EXEC_LINUX_DESKTOP_FILE}")
+    endif()
+    if(PACKAGE_EXEC_LINUX_ICON_THEME_DIR)
+        list(APPEND _register_args LINUX_ICON_THEME_DIR "${PACKAGE_EXEC_LINUX_ICON_THEME_DIR}")
+    endif()
+
+    _package_register_target_impl(${target} ${_register_args})
 endfunction()
 
 # Creates and registers a library target, wiring conventional public/private include paths and the
@@ -411,6 +455,9 @@ function(package_install)
         # directory automatically. CPACK_CREATE_DESKTOP_LINKS controls which of those also get a
         # desktop icon when the user checks "Create Desktop Icon" during installation. Defaults to
         # all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
+        #
+        # CPACK_NSIS_MUI_ICON / CPACK_NSIS_MUI_UNIICON: installer/uninstaller window icon. Set from
+        # the first executable that has a PACKAGE_BUILDER_ICON target property.
         set(_cpack_executables)
         set(_cpack_desktop_links)
         foreach(rt_target IN LISTS runtime_targets)
@@ -424,6 +471,13 @@ function(package_install)
                 if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
                                                                 PACKAGE_BUILDER_DESKTOP_LINKS)
                     list(APPEND _cpack_desktop_links "${_output_name}")
+                endif()
+                if(NOT CPACK_NSIS_MUI_ICON)
+                    get_target_property(_icon ${rt_target} PACKAGE_BUILDER_ICON)
+                    if(_icon)
+                        set(CPACK_NSIS_MUI_ICON "${_icon}")
+                        set(CPACK_NSIS_MUI_UNIICON "${_icon}")
+                    endif()
                 endif()
             endif()
         endforeach()
@@ -439,16 +493,23 @@ function(package_install)
         set(CPACK_GENERATOR "ZIP;DEB")
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
 
-        # Install XDG .desktop files for executables that should get a desktop launcher. Defaults to
-        # all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller. Expects a
-        # <target>.desktop file in the same directory as the target's CMakeLists.txt.
+        # Install XDG .desktop files and icon theme assets for executables that should get desktop
+        # launcher integration. Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not
+        # set by the caller. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
+        # otherwise falls back to expecting a <target>.desktop file in the same directory as the
+        # target's CMakeLists.txt. Linux icon assets are installed from LINUX_ICON_THEME_DIR, which
+        # is expected to contain a hicolor/... tree rooted at that directory.
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
                 if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
                                                                 PACKAGE_BUILDER_DESKTOP_LINKS)
-                    get_target_property(_source_dir ${rt_target} SOURCE_DIR)
-                    set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                    get_target_property(_desktop_file ${rt_target}
+                                        PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
+                    if(NOT _desktop_file)
+                        get_target_property(_source_dir ${rt_target} SOURCE_DIR)
+                        set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                    endif()
                     if(EXISTS "${_desktop_file}")
                         install(
                             FILES "${_desktop_file}"
@@ -460,6 +521,26 @@ function(package_install)
                                 "PackageBuilder: No .desktop file found for '${rt_target}' at "
                                 "${_desktop_file}. Skipping Linux desktop integration for this target."
                         )
+                    endif()
+
+                    get_target_property(_desktop_icon_dir ${rt_target}
+                                        PACKAGE_BUILDER_LINUX_ICON_THEME_DIR)
+                    if(_desktop_icon_dir)
+                        if(EXISTS "${_desktop_icon_dir}")
+                            install(
+                                DIRECTORY "${_desktop_icon_dir}/"
+                                DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
+                                COMPONENT Runtime
+                                FILES_MATCHING
+                                PATTERN "*.png"
+                                PATTERN "*.svg")
+                        else()
+                            message(
+                                WARNING
+                                    "PackageBuilder: Desktop icon directory for '${rt_target}' "
+                                    "does not exist at ${_desktop_icon_dir}. Skipping Linux icon "
+                                    "installation for this target.")
+                        endif()
                     endif()
                 endif()
             endif()
