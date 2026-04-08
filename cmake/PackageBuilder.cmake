@@ -405,11 +405,65 @@ function(package_install)
         set(CPACK_GENERATOR "ZIP;NSIS")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
         set(CPACK_NSIS_MODIFY_PATH ON)
+
+        # CPACK_PACKAGE_EXECUTABLES: pairs of (instdir-relative path, label) for all executables,
+        # which drives Start menu shortcuts. CPACK_CREATE_DESKTOP_LINKS controls which of those also
+        # get a desktop icon when the user checks "Create Desktop Icon" during installation.
+        # Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
+        set(_cpack_executables)
+        set(_cpack_desktop_links)
+        foreach(rt_target IN LISTS runtime_targets)
+            get_target_property(_target_type ${rt_target} TYPE)
+            if(_target_type STREQUAL "EXECUTABLE")
+                get_target_property(_output_name ${rt_target} OUTPUT_NAME)
+                if(NOT _output_name)
+                    set(_output_name "${rt_target}")
+                endif()
+                set(_nsis_path "${CMAKE_INSTALL_BINDIR}\\${_output_name}")
+                list(APPEND _cpack_executables "${_nsis_path}" "${_output_name}")
+                if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
+                                                                PACKAGE_BUILDER_DESKTOP_LINKS)
+                    list(APPEND _cpack_desktop_links "${_nsis_path}")
+                endif()
+            endif()
+        endforeach()
+        if(_cpack_executables)
+            set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
+            set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
+        endif()
     elseif(APPLE)
         set(CPACK_GENERATOR "ZIP;DragNDrop")
+        # macOS: DragNDrop bundles are self-contained; users drag .app to /Applications and
+        # Launchpad handles discovery automatically. No desktop shortcut action needed.
     else()
         set(CPACK_GENERATOR "ZIP;DEB")
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
+
+        # Install XDG .desktop files for executables that should get a desktop launcher. Defaults to
+        # all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller. Expects a
+        # <target>.desktop file in the same directory as the target's CMakeLists.txt.
+        foreach(rt_target IN LISTS runtime_targets)
+            get_target_property(_target_type ${rt_target} TYPE)
+            if(_target_type STREQUAL "EXECUTABLE")
+                if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
+                                                                PACKAGE_BUILDER_DESKTOP_LINKS)
+                    get_target_property(_source_dir ${rt_target} SOURCE_DIR)
+                    set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                    if(EXISTS "${_desktop_file}")
+                        install(
+                            FILES "${_desktop_file}"
+                            DESTINATION share/applications
+                            COMPONENT Runtime)
+                    else()
+                        message(
+                            WARNING
+                                "PackageBuilder: No .desktop file found for '${rt_target}' at "
+                                "${_desktop_file}. Skipping Linux desktop integration for this target."
+                        )
+                    endif()
+                endif()
+            endif()
+        endforeach()
     endif()
 
     include(CPack)
