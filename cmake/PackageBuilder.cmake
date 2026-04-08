@@ -406,10 +406,11 @@ function(package_install)
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
         set(CPACK_NSIS_MODIFY_PATH ON)
 
-        # CPACK_PACKAGE_EXECUTABLES: pairs of (instdir-relative path, label) for all executables,
-        # which drives Start menu shortcuts. CPACK_CREATE_DESKTOP_LINKS controls which of those also
-        # get a desktop icon when the user checks "Create Desktop Icon" during installation.
-        # Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
+        # CPACK_PACKAGE_EXECUTABLES: pairs of (executable name, label) for all executables, which
+        # drives Start Menu shortcuts. The NSIS generator resolves the name relative to the bin
+        # directory automatically. CPACK_CREATE_DESKTOP_LINKS controls which of those also get a
+        # desktop icon when the user checks "Create Desktop Icon" during installation. Defaults to
+        # all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
         set(_cpack_executables)
         set(_cpack_desktop_links)
         foreach(rt_target IN LISTS runtime_targets)
@@ -419,11 +420,10 @@ function(package_install)
                 if(NOT _output_name)
                     set(_output_name "${rt_target}")
                 endif()
-                set(_nsis_path "${CMAKE_INSTALL_BINDIR}\\${_output_name}")
-                list(APPEND _cpack_executables "${_nsis_path}" "${_output_name}")
+                list(APPEND _cpack_executables "${_output_name}" "${_output_name}")
                 if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
                                                                 PACKAGE_BUILDER_DESKTOP_LINKS)
-                    list(APPEND _cpack_desktop_links "${_nsis_path}")
+                    list(APPEND _cpack_desktop_links "${_output_name}")
                 endif()
             endif()
         endforeach()
