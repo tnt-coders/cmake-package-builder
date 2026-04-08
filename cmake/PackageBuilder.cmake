@@ -466,5 +466,9 @@ function(package_install)
         endforeach()
     endif()
 
+    # Ensure backslashes and other special characters in CPACK variable values are properly escaped
+    # when written to CPackConfig.cmake. Without this, backslashes in paths (e.g. bin\appname) would
+    # be interpreted as CMake escape sequences when the file is re-read, corrupting values.
+    set(CPACK_VERBATIM_VARIABLES TRUE)
     include(CPack)
 endfunction()
