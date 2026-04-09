@@ -453,12 +453,27 @@ function(package_install)
 
         # CPACK_PACKAGE_EXECUTABLES: pairs of (executable name, label) for all executables, which
         # drives Start Menu shortcuts. The NSIS generator resolves the name relative to the bin
-        # directory automatically. CPACK_CREATE_DESKTOP_LINKS controls which of those also get a
-        # desktop icon when the user checks "Create Desktop Icon" during installation. Defaults to
-        # all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
+        # directory automatically. Desktop shortcut behavior is controlled by
+        # PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER (default ON):
+        #
+        # ON  — CPACK_NSIS_CREATE_ICONS_EXTRA and CPACK_NSIS_DELETE_ICONS_EXTRA inject explicit
+        # CreateShortCut / Delete commands so shortcuts are always created without a user checkbox.
+        # CPACK_CREATE_DESKTOP_LINKS must NOT also be set for the same targets or the installer will
+        # create duplicate shortcuts.
+        #
+        # OFF — CPACK_CREATE_DESKTOP_LINKS is set instead, restoring the NSIS checkbox-based flow
+        # where the user opts in or out during installation.
+        #
+        # No value validation is performed — CMake's if() handles all truthy/falsy spellings.
+        #
+        # Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
         #
         # CPACK_NSIS_MUI_ICON / CPACK_NSIS_MUI_UNIICON: installer/uninstaller window icon. Set from
         # the first executable that has a PACKAGE_BUILDER_ICON target property.
+        if(NOT DEFINED PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
+        endif()
+
         set(_cpack_executables)
         set(_cpack_desktop_links)
         foreach(rt_target IN LISTS runtime_targets)
@@ -484,7 +499,26 @@ function(package_install)
         endforeach()
         if(_cpack_executables)
             set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
-            set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
+            if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+                # One-click mode: inject CreateShortCut / Delete commands directly into the NSIS
+                # script so desktop shortcuts are created unconditionally at install / uninstall
+                # time. CMAKE_INSTALL_BINDIR may use forward slashes; normalize to backslashes
+                # because NSIS path syntax requires them.
+                string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
+                set(_nsis_create_icons "")
+                set(_nsis_delete_icons "")
+                foreach(_exe_name IN LISTS _cpack_desktop_links)
+                    string(APPEND _nsis_create_icons
+                           "CreateShortCut \"$DESKTOP\\${_exe_name}.lnk\""
+                           " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
+                    string(APPEND _nsis_delete_icons "Delete \"$DESKTOP\\${_exe_name}.lnk\"\n  ")
+                endforeach()
+                set(CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
+                set(CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
+            else()
+                # Checkbox mode: the NSIS installer presents a "Create Desktop Shortcut" checkbox.
+                set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
+            endif()
         endif()
     elseif(APPLE)
         set(CPACK_GENERATOR "ZIP;DragNDrop")
