@@ -97,8 +97,33 @@ function(_package_collect_runtime_targets out_var)
 endfunction()
 
 # Validates that the project has the minimum metadata needed for packaging and marks the module as
-# initialized.
+# initialized. Accepts optional package-level metadata: PRIMARY_TARGET designates the executable
+# that represents the package's Windows identity (display name, installer icon, ARP icon);
+# DISPLAY_NAME overrides the package name derived from PRIMARY_TARGET; ICON overrides the
+# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts.
 function(package_create)
+    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON"
+                          "DESKTOP_LINKS")
+
+    if(PACKAGE_CREATE_PRIMARY_TARGET)
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_PRIMARY_TARGET
+                                     "${PACKAGE_CREATE_PRIMARY_TARGET}")
+    endif()
+
+    if(PACKAGE_CREATE_DISPLAY_NAME)
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_DISPLAY_NAME "${PACKAGE_CREATE_DISPLAY_NAME}")
+    endif()
+
+    if(PACKAGE_CREATE_ICON)
+        _package_make_paths_absolute(_icon_abs "${PACKAGE_CREATE_ICON}")
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_ICON "${_icon_abs}")
+    endif()
+
+    if(DEFINED PACKAGE_CREATE_DESKTOP_LINKS)
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS_DEFINED TRUE)
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS
+                                     "${PACKAGE_CREATE_DESKTOP_LINKS}")
+    endif()
 
     if(NOT PROJECT_VERSION)
         message(FATAL_ERROR "PROJECT_VERSION is not set. Add a VERSION to your project() call, "
@@ -463,71 +488,156 @@ function(package_install)
         # is removed. Setting MODIFY_PATH OFF prevents the installer from silently adding the
         # install directory to PATH on every install. In checkbox mode the page is present and the
         # user controls this, so the default ON applies.
+        if(NOT DEFINED PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
+        endif()
+
         if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
             set(CPACK_NSIS_MODIFY_PATH OFF)
         else()
             set(CPACK_NSIS_MODIFY_PATH ON)
         endif()
 
-        # CPACK_PACKAGE_EXECUTABLES: pairs of (executable name, label) for all executables, which
-        # drives Start Menu shortcuts. The NSIS generator resolves the name relative to the bin
-        # directory automatically. Desktop shortcut behavior is controlled by
-        # PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER (default ON):
-        #
-        # ON  — CPACK_NSIS_CREATE_ICONS_EXTRA and CPACK_NSIS_DELETE_ICONS_EXTRA inject explicit
-        # CreateShortCut / Delete commands so shortcuts are always created without a user checkbox.
-        # CPACK_CREATE_DESKTOP_LINKS must NOT also be set for the same targets or the installer will
-        # create duplicate shortcuts.
-        #
-        # OFF — CPACK_CREATE_DESKTOP_LINKS is set instead, restoring the NSIS checkbox-based flow
-        # where the user opts in or out during installation.
-        #
-        # No value validation is performed — CMake's if() handles all truthy/falsy spellings.
-        #
-        # Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not set by the caller.
-        #
-        # CPACK_NSIS_MUI_ICON / CPACK_NSIS_MUI_UNIICON: installer/uninstaller window icon. Set from
-        # the first executable that has a PACKAGE_BUILDER_ICON target property.
-        if(NOT DEFINED PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-            set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
-        endif()
-
-        set(_cpack_executables)
-        set(_cpack_desktop_links)
-        set(_cpack_desktop_link_labels)
+        # -------------------------------------------------------------------
+        # Collect packaged executables
+        # -------------------------------------------------------------------
+        set(_exe_targets)
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
-                get_target_property(_output_name ${rt_target} OUTPUT_NAME)
-                if(NOT _output_name)
-                    set(_output_name "${rt_target}")
+                list(APPEND _exe_targets ${rt_target})
+            endif()
+        endforeach()
+
+        # -------------------------------------------------------------------
+        # Resolve primary executable PRIMARY_TARGET is explicit; single-exe packages infer it
+        # automatically. Multi-exe packages without PRIMARY_TARGET emit a warning.
+        # -------------------------------------------------------------------
+        get_property(_primary_target GLOBAL PROPERTY PACKAGE_BUILDER_PRIMARY_TARGET)
+        if(NOT _primary_target)
+            list(LENGTH _exe_targets _exe_count)
+            if(_exe_count EQUAL 1)
+                set(_primary_target "${_exe_targets}")
+            elseif(_exe_count GREATER 1)
+                message(
+                    WARNING
+                        "PackageBuilder: Multiple executables packaged but PRIMARY_TARGET is not set. "
+                        "Package display name will fall back to PROJECT_NAME and icon fields will be "
+                        "left unset. Call package_create(PRIMARY_TARGET <target>) to designate a "
+                        "primary executable, or use DISPLAY_NAME and ICON to override explicitly.")
+            endif()
+        endif()
+
+        # -------------------------------------------------------------------
+        # Resolve package display name Explicit DISPLAY_NAME > PRIMARY_TARGET's display name >
+        # PROJECT_NAME
+        # -------------------------------------------------------------------
+        get_property(_pkg_display_name GLOBAL PROPERTY PACKAGE_BUILDER_DISPLAY_NAME)
+        if(NOT _pkg_display_name AND _primary_target)
+            get_target_property(_pkg_display_name ${_primary_target} PACKAGE_BUILDER_DISPLAY_NAME)
+            if(NOT _pkg_display_name)
+                get_target_property(_pkg_display_name ${_primary_target} OUTPUT_NAME)
+                if(NOT _pkg_display_name)
+                    set(_pkg_display_name "${_primary_target}")
                 endif()
-                get_target_property(_display_name ${rt_target} PACKAGE_BUILDER_DISPLAY_NAME)
+            endif()
+        endif()
+        if(NOT _pkg_display_name)
+            set(_pkg_display_name "${PROJECT_NAME}")
+        endif()
+        set(CPACK_NSIS_DISPLAY_NAME "${_pkg_display_name}")
+        set(CPACK_NSIS_PACKAGE_NAME "${_pkg_display_name}")
+
+        # -------------------------------------------------------------------
+        # Resolve installer and ARP icons Package-level ICON overrides target-level icon. If
+        # PRIMARY_TARGET has no icon, leave fields unset.
+        # -------------------------------------------------------------------
+        get_property(_pkg_icon GLOBAL PROPERTY PACKAGE_BUILDER_ICON)
+        if(_pkg_icon)
+            set(CPACK_NSIS_MUI_ICON "${_pkg_icon}")
+            set(CPACK_NSIS_MUI_UNIICON "${_pkg_icon}")
+            get_filename_component(_pkg_icon_filename "${_pkg_icon}" NAME)
+            string(REPLACE "/" "\\" _nsis_installed_icon
+                           "${CMAKE_INSTALL_BINDIR}/${_pkg_icon_filename}")
+            set(CPACK_NSIS_INSTALLED_ICON_NAME "${_nsis_installed_icon}")
+            install(
+                FILES "${_pkg_icon}"
+                DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                COMPONENT Runtime)
+        elseif(_primary_target)
+            get_target_property(_primary_icon ${_primary_target} PACKAGE_BUILDER_ICON)
+            if(_primary_icon)
+                set(CPACK_NSIS_MUI_ICON "${_primary_icon}")
+                set(CPACK_NSIS_MUI_UNIICON "${_primary_icon}")
+                get_target_property(_primary_output_name ${_primary_target} OUTPUT_NAME)
+                if(NOT _primary_output_name)
+                    set(_primary_output_name "${_primary_target}")
+                endif()
+                string(REPLACE "/" "\\" _nsis_installed_icon
+                               "${CMAKE_INSTALL_BINDIR}/${_primary_output_name}.exe")
+                set(CPACK_NSIS_INSTALLED_ICON_NAME "${_nsis_installed_icon}")
+            endif()
+        endif()
+
+        # -------------------------------------------------------------------
+        # Build CPACK_PACKAGE_EXECUTABLES (all executables, label = DISPLAY_NAME)
+        # -------------------------------------------------------------------
+        set(_cpack_executables)
+        foreach(rt_target IN LISTS _exe_targets)
+            get_target_property(_output_name ${rt_target} OUTPUT_NAME)
+            if(NOT _output_name)
+                set(_output_name "${rt_target}")
+            endif()
+            get_target_property(_display_name ${rt_target} PACKAGE_BUILDER_DISPLAY_NAME)
+            if(NOT _display_name)
+                set(_display_name "${_output_name}")
+            endif()
+            list(APPEND _cpack_executables "${_output_name}" "${_display_name}")
+        endforeach()
+
+        # -------------------------------------------------------------------
+        # Resolve desktop shortcut targets DESKTOP_LINKS not set  → primary target only (if
+        # resolved) DESKTOP_LINKS empty    → no shortcuts DESKTOP_LINKS <list>   → exactly those
+        # targets
+        # -------------------------------------------------------------------
+        get_property(_desktop_links_defined GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS_DEFINED)
+        get_property(_desktop_link_targets GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS)
+        set(_cpack_desktop_links)
+        set(_cpack_desktop_link_labels)
+        if(_desktop_links_defined)
+            foreach(_link_target IN LISTS _desktop_link_targets)
+                get_target_property(_output_name ${_link_target} OUTPUT_NAME)
+                if(NOT _output_name)
+                    set(_output_name "${_link_target}")
+                endif()
+                get_target_property(_display_name ${_link_target} PACKAGE_BUILDER_DISPLAY_NAME)
                 if(NOT _display_name)
                     set(_display_name "${_output_name}")
                 endif()
-                list(APPEND _cpack_executables "${_output_name}" "${_display_name}")
-                if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
-                                                                PACKAGE_BUILDER_DESKTOP_LINKS)
-                    list(APPEND _cpack_desktop_links "${_output_name}")
-                    list(APPEND _cpack_desktop_link_labels "${_display_name}")
-                endif()
-                if(NOT CPACK_NSIS_MUI_ICON)
-                    get_target_property(_icon ${rt_target} PACKAGE_BUILDER_ICON)
-                    if(_icon)
-                        set(CPACK_NSIS_MUI_ICON "${_icon}")
-                        set(CPACK_NSIS_MUI_UNIICON "${_icon}")
-                    endif()
-                endif()
+                list(APPEND _cpack_desktop_links "${_output_name}")
+                list(APPEND _cpack_desktop_link_labels "${_display_name}")
+            endforeach()
+        elseif(_primary_target)
+            get_target_property(_output_name ${_primary_target} OUTPUT_NAME)
+            if(NOT _output_name)
+                set(_output_name "${_primary_target}")
             endif()
-        endforeach()
+            get_target_property(_display_name ${_primary_target} PACKAGE_BUILDER_DISPLAY_NAME)
+            if(NOT _display_name)
+                set(_display_name "${_output_name}")
+            endif()
+            list(APPEND _cpack_desktop_links "${_output_name}")
+            list(APPEND _cpack_desktop_link_labels "${_display_name}")
+        endif()
+
+        # -------------------------------------------------------------------
+        # Wire up CPack shortcut variables One-click: inject CreateShortCut commands
+        # unconditionally. Classic:   CPACK_CREATE_DESKTOP_LINKS drives the checkbox flow; .lnk
+        # names use the label from CPACK_PACKAGE_EXECUTABLES automatically.
+        # -------------------------------------------------------------------
         if(_cpack_executables)
             set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
             if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-                # One-click mode: inject CreateShortCut / Delete commands directly into the NSIS
-                # script so desktop shortcuts are created unconditionally at install / uninstall
-                # time. CMAKE_INSTALL_BINDIR may use forward slashes; normalize to backslashes
-                # because NSIS path syntax requires them.
                 string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
                 set(_nsis_create_icons "")
                 set(_nsis_delete_icons "")
@@ -540,7 +650,6 @@ function(package_install)
                 set(CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
                 set(CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
             else()
-                # Checkbox mode: the NSIS installer presents a "Create Desktop Shortcut" checkbox.
                 set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
             endif()
         endif()
@@ -553,16 +662,17 @@ function(package_install)
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
 
         # Install XDG .desktop files and icon theme assets for executables that should get desktop
-        # launcher integration. Defaults to all executables if PACKAGE_BUILDER_DESKTOP_LINKS is not
-        # set by the caller. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
+        # launcher integration. Defaults to all executables if DESKTOP_LINKS was not passed to
+        # package_create(). Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
         # otherwise falls back to expecting a <target>.desktop file in the same directory as the
         # target's CMakeLists.txt. Linux icon assets are installed from LINUX_ICON_THEME_DIR, which
         # is expected to contain a hicolor/... tree rooted at that directory.
+        get_property(_desktop_links_defined GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS_DEFINED)
+        get_property(_desktop_link_targets GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS)
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
-                if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
-                                                                PACKAGE_BUILDER_DESKTOP_LINKS)
+                if(NOT _desktop_links_defined OR rt_target IN_LIST _desktop_link_targets)
                     get_target_property(_desktop_file ${rt_target}
                                         PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
                     if(NOT _desktop_file)
