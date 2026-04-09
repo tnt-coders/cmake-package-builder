@@ -722,6 +722,10 @@ Function un.onInit
 
 FunctionEnd
 
+Function un.onInstSuccess
+  SetAutoClose true
+FunctionEnd
+
 ;--- Add/Remove callback functions: ---
 !macro SectionList MacroName
   ;This macro used to perform operation on multiple sections.

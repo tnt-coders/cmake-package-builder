@@ -32,11 +32,12 @@ function(_package_make_paths_absolute out_var)
 endfunction()
 
 # Records an existing target for install/export handling and optionally tracks public header roots
-# for header installation. Accepts ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR to store
-# per-target packaging metadata. This helper must not mutate target build settings.
+# for header installation. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR
+# to store per-target packaging metadata. This helper must not mutate target build settings.
 function(_package_register_target_impl target)
-    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_REGISTER ""
-                          "ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "PUBLIC_HEADER_DIRS")
+    cmake_parse_arguments(
+        PARSE_ARGV 1 PACKAGE_REGISTER ""
+        "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "PUBLIC_HEADER_DIRS")
 
     if(NOT TARGET ${target})
         message(FATAL_ERROR "Target '${target}' does not exist and cannot be registered.")
@@ -50,6 +51,11 @@ function(_package_register_target_impl target)
         _package_make_paths_absolute(public_header_dirs ${PACKAGE_REGISTER_PUBLIC_HEADER_DIRS})
         set_property(GLOBAL APPEND PROPERTY ${PROJECT_NAME}_PUBLIC_HEADER_PATHS
                                             ${public_header_dirs})
+    endif()
+
+    if(PACKAGE_REGISTER_DISPLAY_NAME)
+        set_target_properties(${target} PROPERTIES PACKAGE_BUILDER_DISPLAY_NAME
+                                                   "${PACKAGE_REGISTER_DISPLAY_NAME}")
     endif()
 
     if(PACKAGE_REGISTER_ICON)
@@ -123,15 +129,15 @@ function(package_register_target target)
 endfunction()
 
 # Creates and registers an executable target using PackageBuilder's conventional private include
-# defaults for application-style layouts. Accepts ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR
-# as packaging metadata; all other arguments are forwarded to add_executable() as sources. When ICON
-# is provided on Windows, PackageBuilder also generates a resource file so the executable itself
-# gets that icon.
+# defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and
+# LINUX_ICON_THEME_DIR as packaging metadata; all other arguments are forwarded to add_executable()
+# as sources. When ICON is provided on Windows, PackageBuilder also generates a resource file so the
+# executable itself gets that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
     cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC ""
-                          "ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "")
+                          "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "")
 
     add_executable(${target} ${PACKAGE_EXEC_UNPARSED_ARGUMENTS})
 
@@ -149,6 +155,9 @@ function(package_add_executable target)
     endif()
 
     set(_register_args)
+    if(PACKAGE_EXEC_DISPLAY_NAME)
+        list(APPEND _register_args DISPLAY_NAME "${PACKAGE_EXEC_DISPLAY_NAME}")
+    endif()
     if(PACKAGE_EXEC_ICON)
         list(APPEND _register_args ICON "${PACKAGE_EXEC_ICON}")
     endif()
@@ -485,6 +494,7 @@ function(package_install)
 
         set(_cpack_executables)
         set(_cpack_desktop_links)
+        set(_cpack_desktop_link_labels)
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
@@ -492,10 +502,15 @@ function(package_install)
                 if(NOT _output_name)
                     set(_output_name "${rt_target}")
                 endif()
-                list(APPEND _cpack_executables "${_output_name}" "${_output_name}")
+                get_target_property(_display_name ${rt_target} PACKAGE_BUILDER_DISPLAY_NAME)
+                if(NOT _display_name)
+                    set(_display_name "${_output_name}")
+                endif()
+                list(APPEND _cpack_executables "${_output_name}" "${_display_name}")
                 if(NOT DEFINED PACKAGE_BUILDER_DESKTOP_LINKS OR rt_target IN_LIST
                                                                 PACKAGE_BUILDER_DESKTOP_LINKS)
                     list(APPEND _cpack_desktop_links "${_output_name}")
+                    list(APPEND _cpack_desktop_link_labels "${_display_name}")
                 endif()
                 if(NOT CPACK_NSIS_MUI_ICON)
                     get_target_property(_icon ${rt_target} PACKAGE_BUILDER_ICON)
@@ -516,11 +531,11 @@ function(package_install)
                 string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
                 set(_nsis_create_icons "")
                 set(_nsis_delete_icons "")
-                foreach(_exe_name IN LISTS _cpack_desktop_links)
-                    string(APPEND _nsis_create_icons
-                           "CreateShortCut \"$DESKTOP\\${_exe_name}.lnk\""
+                foreach(_exe_name _label IN ZIP_LISTS _cpack_desktop_links
+                                  _cpack_desktop_link_labels)
+                    string(APPEND _nsis_create_icons "CreateShortCut \"$DESKTOP\\${_label}.lnk\""
                            " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
-                    string(APPEND _nsis_delete_icons "Delete \"$DESKTOP\\${_exe_name}.lnk\"\n  ")
+                    string(APPEND _nsis_delete_icons "Delete \"$DESKTOP\\${_label}.lnk\"\n  ")
                 endforeach()
                 set(CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
                 set(CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
