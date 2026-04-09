@@ -258,9 +258,50 @@ package_install()
 
 | Platform | Behavior |
 |----------|----------|
-| Windows  | Populates `CPACK_PACKAGE_EXECUTABLES` (Start Menu shortcuts) and `CPACK_CREATE_DESKTOP_LINKS` (optional desktop icon checkbox in the installer) for each qualifying executable. The NSIS installer icon is taken from the first registered executable that provides `ICON`. |
+| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The NSIS installer icon is taken from the first registered executable that provides `ICON`. |
 | Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder falls back to looking for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`. |
 | macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
+
+### Windows one-click installer
+
+By default (`PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON`), the generated NSIS installer is
+**zero-interaction**: the user double-clicks the installer, it installs the application, creates a
+desktop shortcut, and closes automatically. No wizard pages, no "Next" buttons, no path or
+directory choices.
+
+When set to `OFF`, the installer reverts to the classic NSIS wizard with Welcome, License,
+Directory, Start Menu, and Install pages, plus an opt-in desktop shortcut checkbox.
+
+```cmake
+# Default: zero-interaction installer (user just double-clicks)
+# set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
+
+# Classic wizard with pages
+set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER OFF)
+package_install()
+```
+
+| Mode | Desktop shortcut | PATH modification | Wizard pages |
+|------|-----------------|-------------------|--------------|
+| `ON` (default) | Always created unconditionally | Never added to PATH | None — installs silently |
+| `OFF` | Opt-in checkbox during install | User-controlled via installer page | Welcome, License, Directory, Start Menu, Finish |
+
+#### Providing a custom NSIS template
+
+If your project needs a fully custom NSIS installer template, set `PACKAGE_BUILDER_NSIS_TEMPLATE_DIR`
+to the directory containing your `NSIS.template.in` before calling `package_install()`. This
+directory takes the highest priority over PackageBuilder's own template:
+
+```cmake
+set(PACKAGE_BUILDER_NSIS_TEMPLATE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packaging/nsis")
+package_install()
+```
+
+PackageBuilder's lookup order for `NSIS.template.in` (highest to lowest priority):
+
+1. `PACKAGE_BUILDER_NSIS_TEMPLATE_DIR` — caller-provided override
+2. PackageBuilder's bundled `cmake/NSIS/` directory (one-click template)
+3. CMake's built-in NSIS template (classic wizard)
 
 ### Including development components
 

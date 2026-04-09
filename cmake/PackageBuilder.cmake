@@ -363,7 +363,8 @@ function(package_install)
         DESTINATION ${install_destination}
         COMPONENT Development
         FILES_MATCHING
-        PATTERN "*.cmake")
+        PATTERN "*.cmake"
+        PATTERN "*.in")
 
     # Generate a package configuration file
     set(config_content "@PACKAGE_INIT@\n")
@@ -449,7 +450,15 @@ function(package_install)
     if(WIN32)
         set(CPACK_GENERATOR "ZIP;NSIS")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-        set(CPACK_NSIS_MODIFY_PATH ON)
+        # In one-click mode the InstallOptions page (which let the user toggle $DO_NOT_ADD_TO_PATH)
+        # is removed. Setting MODIFY_PATH OFF prevents the installer from silently adding the
+        # install directory to PATH on every install. In checkbox mode the page is present and the
+        # user controls this, so the default ON applies.
+        if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            set(CPACK_NSIS_MODIFY_PATH OFF)
+        else()
+            set(CPACK_NSIS_MODIFY_PATH ON)
+        endif()
 
         # CPACK_PACKAGE_EXECUTABLES: pairs of (executable name, label) for all executables, which
         # drives Start Menu shortcuts. The NSIS generator resolves the name relative to the bin
@@ -586,5 +595,21 @@ function(package_install)
     # when written to CPackConfig.cmake. Without this, backslashes in paths (e.g. bin\appname) would
     # be interpreted as CMake escape sequences when the file is re-read, corrupting values.
     set(CPACK_VERBATIM_VARIABLES TRUE)
+
+    if(WIN32 AND PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+        # Inject the one-click NSIS template by prepending its directory to CMAKE_MODULE_PATH so
+        # CPack's NSIS generator finds it before CMake's built-in template. The precedence is:
+        #
+        # PACKAGE_BUILDER_NSIS_TEMPLATE_DIR (caller override, highest priority) PackageBuilder's own
+        # cmake/NSIS/ directory CMake's built-in templates (lowest priority)
+        #
+        # CMAKE_CURRENT_FUNCTION_LIST_DIR resolves to the directory containing PackageBuilder.cmake
+        # regardless of where package_install() is called from (requires CMake 3.17+).
+        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NSIS")
+        if(DEFINED PACKAGE_BUILDER_NSIS_TEMPLATE_DIR)
+            list(PREPEND CMAKE_MODULE_PATH "${PACKAGE_BUILDER_NSIS_TEMPLATE_DIR}")
+        endif()
+    endif()
+
     include(CPack)
 endfunction()
