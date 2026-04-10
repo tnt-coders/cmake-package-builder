@@ -722,7 +722,7 @@ Function un.onInit
 
 FunctionEnd
 
-Function un.onInstSuccess
+Function un.onUninstSuccess
   SetAutoClose true
 FunctionEnd
 
