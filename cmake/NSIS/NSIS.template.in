@@ -722,10 +722,6 @@ Function un.onInit
 
 FunctionEnd
 
-Function un.onUninstSuccess
-  SetAutoClose true
-FunctionEnd
-
 ;--- Add/Remove callback functions: ---
 !macro SectionList MacroName
   ;This macro used to perform operation on multiple sections.
@@ -766,6 +762,9 @@ FunctionEnd
 ;Uninstaller Section
 
 Section "Uninstall"
+  ; Auto-close the uninstaller window when done (mirrors AutoCloseWindow for the installer).
+  SetAutoClose true
+
   ReadRegStr $START_MENU SHCTX \
    "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@" "StartMenu"
   ReadRegStr $DO_NOT_ADD_TO_PATH SHCTX \
