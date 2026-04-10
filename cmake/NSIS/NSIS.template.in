@@ -762,9 +762,6 @@ FunctionEnd
 ;Uninstaller Section
 
 Section "Uninstall"
-  ; Auto-close the uninstaller window when done (mirrors AutoCloseWindow for the installer).
-  SetAutoClose true
-
   ReadRegStr $START_MENU SHCTX \
    "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@" "StartMenu"
   ReadRegStr $DO_NOT_ADD_TO_PATH SHCTX \
