@@ -16,15 +16,10 @@ endfunction()
 # Converts caller-provided header root paths to absolute paths before storing them as install
 # metadata.
 function(_package_make_paths_absolute out_var)
-    # Public header roots may be passed relative to the caller's CMakeLists, so normalise them once
-    # here before storing install metadata globally.
     set(absolute_paths)
     foreach(path IN LISTS ARGN)
-        if(IS_ABSOLUTE "${path}")
-            list(APPEND absolute_paths "${path}")
-        else()
-            list(APPEND absolute_paths "${CMAKE_CURRENT_SOURCE_DIR}/${path}")
-        endif()
+        get_filename_component(path "${path}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        list(APPEND absolute_paths "${path}")
     endforeach()
     set(${out_var}
         "${absolute_paths}"
@@ -281,9 +276,7 @@ function(package_install)
         # find_package() consumers can link against them.
         # -------------------------------------------------------------------
         set(non_runtime_targets ${targets})
-        foreach(rt_target IN LISTS runtime_targets)
-            list(REMOVE_ITEM non_runtime_targets ${rt_target})
-        endforeach()
+        list(REMOVE_ITEM non_runtime_targets ${runtime_targets})
 
         # -------------------------------------------------------------------
         # Group A: Non-runtime targets (static/object/interface libraries).
@@ -443,22 +436,20 @@ function(package_install)
         ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
         INSTALL_DESTINATION ${install_destination})
 
-    # Gather files to be installed
-    list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake)
-
-    # Generate a package version file
+    # Generate a package version file. The absolute path avoids a subtle bug: write_basic_package_version_file
+    # resolves relative paths against CMAKE_CURRENT_BINARY_DIR, which is the caller's binary dir
+    # inside a function — not necessarily PROJECT_BINARY_DIR.
     write_basic_package_version_file(
-        ${PROJECT_NAME}ConfigVersion.cmake
+        "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY SameMajorVersion)
-
-    list(APPEND install_files ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake)
 
     # The generated Config and ConfigVersion files are consumed by find_package() in downstream
     # projects. They are CMake package metadata — development artifacts — and must not appear in
     # runtime-only release installers.
     install(
-        FILES ${install_files}
+        FILES "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+              "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
         DESTINATION ${install_destination}
         COMPONENT Development)
 
@@ -538,8 +529,9 @@ function(package_install)
         endforeach()
 
         # -------------------------------------------------------------------
-        # Resolve primary executable PRIMARY_TARGET is explicit; single-exe packages infer it
-        # automatically. Multi-exe packages without PRIMARY_TARGET emit a warning.
+        # Resolve primary executable:
+        # PRIMARY_TARGET is explicit; single-exe packages infer it automatically. Multi-exe
+        # packages without PRIMARY_TARGET emit a warning.
         # -------------------------------------------------------------------
         get_property(_primary_target GLOBAL PROPERTY PACKAGE_BUILDER_PRIMARY_TARGET)
         if(NOT _primary_target)
@@ -557,8 +549,8 @@ function(package_install)
         endif()
 
         # -------------------------------------------------------------------
-        # Resolve package display name: Explicit DISPLAY_NAME > PRIMARY_TARGET's display name >
-        # PROJECT_NAME
+        # Resolve package display name:
+        # Explicit DISPLAY_NAME > PRIMARY_TARGET's display name > PROJECT_NAME
         # -------------------------------------------------------------------
         get_property(_pkg_display_name GLOBAL PROPERTY PACKAGE_BUILDER_DISPLAY_NAME)
         if(NOT _pkg_display_name AND _primary_target)
@@ -571,8 +563,9 @@ function(package_install)
         set(CPACK_NSIS_PACKAGE_NAME "${_pkg_display_name}")
 
         # -------------------------------------------------------------------
-        # Resolve installer and ARP icons Package-level ICON overrides target-level icon. If
-        # PRIMARY_TARGET has no icon, leave fields unset.
+        # Resolve installer and ARP icons:
+        # Package-level ICON overrides target-level icon. If PRIMARY_TARGET has no icon, leave
+        # fields unset.
         # -------------------------------------------------------------------
         get_property(_pkg_icon GLOBAL PROPERTY PACKAGE_BUILDER_ICON)
         if(_pkg_icon)
@@ -609,9 +602,10 @@ function(package_install)
         endforeach()
 
         # -------------------------------------------------------------------
-        # Resolve desktop shortcut targets: DESKTOP_LINKS not set  → primary target only (if
-        # resolved) DESKTOP_LINKS empty    → no shortcuts DESKTOP_LINKS <list>   → exactly those
-        # targets
+        # Resolve desktop shortcut targets:
+        # DESKTOP_LINKS not set  → primary target only (if resolved)
+        # DESKTOP_LINKS empty    → no shortcuts
+        # DESKTOP_LINKS <list>   → exactly those targets
         # -------------------------------------------------------------------
         if(NOT _desktop_links_defined AND _primary_target)
             set(_desktop_link_targets "${_primary_target}")
@@ -626,9 +620,10 @@ function(package_install)
         endforeach()
 
         # -------------------------------------------------------------------
-        # Wire up CPack shortcut variables One-click: inject CreateShortCut commands
-        # unconditionally. Classic:   CPACK_CREATE_DESKTOP_LINKS drives the checkbox flow; .lnk
-        # names use the label from CPACK_PACKAGE_EXECUTABLES automatically.
+        # Wire up CPack shortcut variables:
+        # One-click: inject CreateShortCut commands unconditionally.
+        # Classic:   CPACK_CREATE_DESKTOP_LINKS drives the checkbox flow; .lnk names come from
+        #            CPACK_PACKAGE_EXECUTABLES automatically.
         # -------------------------------------------------------------------
         if(_cpack_executables)
             set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
@@ -675,7 +670,7 @@ function(package_install)
                     if(EXISTS "${_desktop_file}")
                         install(
                             FILES "${_desktop_file}"
-                            DESTINATION share/applications
+                            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
                             COMPONENT Runtime)
                     else()
                         message(
@@ -716,10 +711,11 @@ function(package_install)
 
     if(WIN32 AND PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
         # Inject the one-click NSIS template by prepending its directory to CMAKE_MODULE_PATH so
-        # CPack's NSIS generator finds it before CMake's built-in template. The precedence is:
-        #
-        # PACKAGE_BUILDER_NSIS_TEMPLATE_DIR (caller override, highest priority) PackageBuilder's own
-        # cmake/NSIS/ directory CMake's built-in templates (lowest priority)
+        # CPack's NSIS generator finds it before CMake's built-in template. Precedence (highest
+        # to lowest):
+        #   1. PACKAGE_BUILDER_NSIS_TEMPLATE_DIR (caller override)
+        #   2. PackageBuilder's own cmake/NSIS/ directory
+        #   3. CMake's built-in templates
         #
         # CMAKE_CURRENT_FUNCTION_LIST_DIR resolves to the directory containing PackageBuilder.cmake
         # regardless of where package_install() is called from (requires CMake 3.17+).
