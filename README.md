@@ -1,6 +1,9 @@
 # PackageBuilder
 
-[![Build](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build.yml)
+[![Build - Windows](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-windows.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-windows.yml)
+[![Build - Linux](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-linux.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-linux.yml)
+[![Build - macOS](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-macos.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-macos.yml)
+[![Docs](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/docs.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/docs.yml)
 
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation all handled automatically.
 
