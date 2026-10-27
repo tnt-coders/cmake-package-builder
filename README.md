@@ -110,7 +110,7 @@ package_create()
 This function performs essential validation before any targets are defined:
 
 - **Version verification:** Verifies that `PROJECT_VERSION` is set and fails with a fatal error if it is not. `PROJECT_VERSION` is typically set by specifying the version in the `project()` command.
-- **Package version:** The installers carry `PROJECT_VERSION` unless `VERSION` overrides it with that version plus a SemVer pre-release or build suffix, e.g. `package_create(VERSION 1.0.0-alpha)` under `project(MyProject VERSION 1.0.0)`; any other value is a fatal error. `project()` and the platform version fields (Windows VERSIONINFO, Apple plists) accept integers only, so they keep the numeric version while installer file names and displayed versions carry the full one. Debian packages spell the suffix with `~` (`1.0.0~alpha`) so that a pre-release sorts before its final release.
+- **Package version:** The installers carry `PROJECT_VERSION` unless `VERSION` overrides it with that version plus a SemVer pre-release or build suffix, e.g. `package_create(VERSION 1.0.0-alpha)` under `project(MyProject VERSION 1.0.0)`; any other value is a fatal error. `project()` and the numeric platform version fields (Windows VERSIONINFO's `FILEVERSION` and `PRODUCTVERSION`, Apple plists) accept integers only, so they keep the numeric version while installer file names, displayed versions and the Windows version text fields carry the full one. Debian packages spell the suffix with `~` (`1.0.0~alpha`) so that a pre-release sorts before its final release.
 - **Description verification:** Verifies that `PROJECT_DESCRIPTION` is set and fails with a fatal error if it is not. Set via the `DESCRIPTION` argument in the `project()` command.
 - **License verification:** Verifies that a `LICENSE` file exists at the project root. This is required for CPack packaging.
 
@@ -154,6 +154,8 @@ a build-time convenience only and is not exported to consumers.
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
 
 All other arguments after the target name are forwarded to `add_executable()` as source files.
+
+On Windows, every executable created with `package_add_executable` also gets version information, which Explorer shows under Properties → Details: the numeric `FILEVERSION` and `PRODUCTVERSION` carry `PROJECT_VERSION`, and the `File version` and `Product version` text carries the full package version (`1.0.0-alpha`). Targets created outside PackageBuilder keep whatever version resource their own tooling writes.
 
 ### Register Existing Targets
 

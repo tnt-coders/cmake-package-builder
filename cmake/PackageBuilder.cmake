@@ -152,9 +152,10 @@ function(package_create)
                             "e.g. project(MyProject VERSION 1.0.0)")
     endif()
 
-    # project() and the platform version fields (Windows VERSIONINFO, Apple plists) accept integers
-    # only, so a suffixed package version must keep PROJECT_VERSION as its numeric core: the
-    # installers carry the whole string while everything numeric keeps reading project().
+    # project() and the numeric platform version fields (VERSIONINFO's FILEVERSION, Apple plists)
+    # accept integers only, so a suffixed package version must keep PROJECT_VERSION as its numeric
+    # core: the installers and version text carry the whole string while everything numeric keeps
+    # reading project().
     if(NOT PACKAGE_CREATE_VERSION)
         set(PACKAGE_CREATE_VERSION "${PROJECT_VERSION}")
     else()
@@ -195,8 +196,9 @@ endfunction()
 # Creates and registers an executable target using PackageBuilder's conventional private include
 # defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and
 # LINUX_ICON_THEME_DIR as packaging metadata; all other arguments are forwarded to add_executable()
-# as sources. When ICON is provided on Windows, PackageBuilder also generates a resource file so the
-# executable itself gets that icon.
+# as sources. On Windows, PackageBuilder also generates a resource file that gives the executable
+# version information (the numeric PROJECT_VERSION, and the full package version as text) and, when
+# ICON is provided, that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
@@ -211,10 +213,46 @@ function(package_add_executable target)
         ${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include
                           ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    if(WIN32 AND PACKAGE_EXEC_ICON)
-        _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
-        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_icon.rc")
-        file(WRITE "${_rc_file}" "IDI_ICON1 ICON \"${_icon_abs}\"\n")
+    if(WIN32)
+        # VERSIONINFO's FILEVERSION and PRODUCTVERSION are four 16-bit integers, so they carry the
+        # numeric PROJECT_VERSION; the text fields Explorer shows carry the full package version.
+        get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
+        set(_numeric_version)
+        foreach(_part IN ITEMS MAJOR MINOR PATCH TWEAK)
+            if("${PROJECT_VERSION_${_part}}" STREQUAL "")
+                list(APPEND _numeric_version 0)
+            else()
+                list(APPEND _numeric_version "${PROJECT_VERSION_${_part}}")
+            endif()
+        endforeach()
+        list(JOIN _numeric_version "," _numeric_version)
+
+        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
+        file(
+            WRITE "${_rc_file}"
+            "1 VERSIONINFO\n"
+            "FILEVERSION ${_numeric_version}\n"
+            "PRODUCTVERSION ${_numeric_version}\n"
+            "FILEOS 0x40004\n" # VOS_NT_WINDOWS32
+            "FILETYPE 0x1\n" # VFT_APP
+            "BEGIN\n"
+            "    BLOCK \"StringFileInfo\"\n"
+            "    BEGIN\n"
+            "        BLOCK \"040904B0\"\n"
+            "        BEGIN\n"
+            "            VALUE \"FileVersion\", \"${_package_version}\"\n"
+            "            VALUE \"ProductVersion\", \"${_package_version}\"\n"
+            "        END\n"
+            "    END\n"
+            "    BLOCK \"VarFileInfo\"\n"
+            "    BEGIN\n"
+            "        VALUE \"Translation\", 0x409, 1200\n"
+            "    END\n"
+            "END\n")
+        if(PACKAGE_EXEC_ICON)
+            _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
+            file(APPEND "${_rc_file}" "IDI_ICON1 ICON \"${_icon_abs}\"\n")
+        endif()
         target_sources(${target} PRIVATE "${_rc_file}")
     endif()
 
