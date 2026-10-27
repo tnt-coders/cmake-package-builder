@@ -120,9 +120,11 @@ endfunction()
 # initialized. Accepts optional package-level metadata: PRIMARY_TARGET designates the executable
 # that represents the package's Windows identity (display name, installer icon, ARP icon);
 # DISPLAY_NAME overrides the package name derived from PRIMARY_TARGET; ICON overrides the
-# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts.
+# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts; VERSION
+# overrides the package version, which defaults to PROJECT_VERSION, with that version plus a SemVer
+# pre-release or build suffix (1.0.0-alpha).
 function(package_create)
-    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON"
+    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION"
                           "DESKTOP_LINKS")
 
     if(PACKAGE_CREATE_PRIMARY_TARGET)
@@ -149,6 +151,23 @@ function(package_create)
         message(FATAL_ERROR "PROJECT_VERSION is not set. Add a VERSION to your project() call, "
                             "e.g. project(MyProject VERSION 1.0.0)")
     endif()
+
+    # project() and the platform version fields (Windows VERSIONINFO, Apple plists) accept integers
+    # only, so a suffixed package version must keep PROJECT_VERSION as its numeric core: the
+    # installers carry the whole string while everything numeric keeps reading project().
+    if(NOT PACKAGE_CREATE_VERSION)
+        set(PACKAGE_CREATE_VERSION "${PROJECT_VERSION}")
+    else()
+        string(REPLACE "." "\\." _numeric_pattern "${PROJECT_VERSION}")
+        if(NOT PACKAGE_CREATE_VERSION MATCHES
+           "^${_numeric_pattern}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$")
+            message(
+                FATAL_ERROR
+                    "package_create(VERSION ${PACKAGE_CREATE_VERSION}) must be PROJECT_VERSION "
+                    "(${PROJECT_VERSION}) plus an optional SemVer pre-release or build suffix.")
+        endif()
+    endif()
+    set_property(GLOBAL PROPERTY PACKAGE_BUILDER_VERSION "${PACKAGE_CREATE_VERSION}")
 
     if(NOT PROJECT_DESCRIPTION)
         message(
@@ -460,8 +479,9 @@ function(package_install)
     # NSIS, DEB, DragNDrop, etc.) from the install() rules defined above. Only install() rules whose
     # COMPONENT is listed in CPACK_COMPONENTS_ALL are included in the generated package.
     # -------------------------------------------------------------------
+    get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
     set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_VERSION "${_package_version}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
     set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 
@@ -477,7 +497,7 @@ function(package_install)
         set(_arch "arm64")
     endif()
     set(CPACK_SYSTEM_NAME "${_os}-${_arch}")
-    set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${PROJECT_VERSION}-${_os}-${_arch}")
+    set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${_package_version}-${_os}-${_arch}")
 
     if(NOT runtime_targets)
         message(
@@ -650,6 +670,9 @@ function(package_install)
     else()
         set(CPACK_GENERATOR "ZIP;DEB")
         set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
+        # dpkg reads '-' as the start of a Debian revision, which sorts AFTER the bare version;
+        # '~' sorts before it, which is what a pre-release must do.
+        string(REPLACE "-" "~" CPACK_DEBIAN_PACKAGE_VERSION "${_package_version}")
 
         # Install XDG .desktop files and icon theme assets for executables that should get desktop
         # launcher integration. Defaults to all executables if DESKTOP_LINKS was not passed to

@@ -110,6 +110,7 @@ package_create()
 This function performs essential validation before any targets are defined:
 
 - **Version verification:** Verifies that `PROJECT_VERSION` is set and fails with a fatal error if it is not. `PROJECT_VERSION` is typically set by specifying the version in the `project()` command.
+- **Package version:** The installers carry `PROJECT_VERSION` unless `VERSION` overrides it with that version plus a SemVer pre-release or build suffix, e.g. `package_create(VERSION 1.0.0-alpha)` under `project(MyProject VERSION 1.0.0)`; any other value is a fatal error. `project()` and the platform version fields (Windows VERSIONINFO, Apple plists) accept integers only, so they keep the numeric version while installer file names and displayed versions carry the full one. Debian packages spell the suffix with `~` (`1.0.0~alpha`) so that a pre-release sorts before its final release.
 - **Description verification:** Verifies that `PROJECT_DESCRIPTION` is set and fails with a fatal error if it is not. Set via the `DESCRIPTION` argument in the `project()` command.
 - **License verification:** Verifies that a `LICENSE` file exists at the project root. This is required for CPack packaging.
 
