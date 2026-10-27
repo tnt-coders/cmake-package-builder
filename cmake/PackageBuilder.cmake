@@ -193,15 +193,16 @@ function(package_register_target target)
     _package_register_target_impl(${target} ${ARGN})
 endfunction()
 
-# Writes a Windows resource script holding the version information of a registered target and
-# returns its path in out_var. FILEVERSION and PRODUCTVERSION are four 16-bit integers, so they carry
-# the numeric PROJECT_VERSION; the text Explorer shows carries the full package version and the
-# target's display name. package_add_executable() compiles it into every executable it creates;
-# a target whose own tooling writes its resource script (JUCE's juce_add_gui_app, through
-# JUCE_USER_DEFINED_RC_FILE) can include it instead. Call it after the target is registered, so the
-# display name is known. The file is rewritten only when its content changes, so a configure does
-# not relink the executable.
-function(package_write_version_resource out_var target)
+# Writes the Windows resource script of a registered target and returns its path in out_var: the
+# version information, and the target's icon when one was registered. FILEVERSION and
+# PRODUCTVERSION are four 16-bit integers, so they carry the numeric PROJECT_VERSION; the text
+# Explorer shows carries the full package version and the target's display name.
+# package_add_executable() compiles it into every executable it creates; a target whose own tooling
+# writes its resource script (JUCE's juce_add_gui_app, through JUCE_USER_DEFINED_RC_FILE) can
+# include it instead. Call it after the target is registered, so the display name and icon are
+# known. The file is rewritten only when its content changes, so a configure does not relink the
+# executable.
+function(package_write_resource_script out_var target)
     _package_check_initialized()
 
     get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
@@ -219,7 +220,6 @@ function(package_write_version_resource out_var target)
     _package_get_shortcut_label(_display_name ${target})
     string(REPLACE "\"" "\"\"" _display_name "${_display_name}")
 
-    set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_version.rc")
     string(
         CONCAT _rc_content
                "1 VERSIONINFO\n"
@@ -243,6 +243,12 @@ function(package_write_version_resource out_var target)
                "        VALUE \"Translation\", 0x409, 1200\n"
                "    END\n"
                "END\n")
+    # Registration already made the icon path absolute.
+    get_target_property(_icon ${target} PACKAGE_BUILDER_ICON)
+    if(_icon)
+        string(APPEND _rc_content "IDI_ICON1 ICON \"${_icon}\"\n")
+    endif()
+    set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
     file(CONFIGURE OUTPUT "${_rc_file}" CONTENT "${_rc_content}" @ONLY)
     set(${out_var}
         "${_rc_file}"
@@ -252,8 +258,8 @@ endfunction()
 # Creates and registers an executable target using PackageBuilder's conventional private include
 # defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and
 # LINUX_ICON_THEME_DIR as packaging metadata; all other arguments are forwarded to add_executable()
-# as sources. On Windows, PackageBuilder also compiles in the target's version resource
-# (package_write_version_resource()) and, when ICON is provided, that icon.
+# as sources. On Windows, PackageBuilder also compiles in the target's resource script
+# (package_write_resource_script()): its version information and, when ICON is provided, that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
@@ -284,16 +290,9 @@ function(package_add_executable target)
 
     _package_register_target_impl(${target} ${_register_args})
 
-    # Registered first, so the version resource carries the target's display name.
+    # Registered first, so the resource script carries the target's display name and icon.
     if(WIN32)
-        package_write_version_resource(_version_rc ${target})
-        set(_rc_content "#include \"${_version_rc}\"\n")
-        if(PACKAGE_EXEC_ICON)
-            _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
-            string(APPEND _rc_content "IDI_ICON1 ICON \"${_icon_abs}\"\n")
-        endif()
-        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
-        file(CONFIGURE OUTPUT "${_rc_file}" CONTENT "${_rc_content}" @ONLY)
+        package_write_resource_script(_rc_file ${target})
         target_sources(${target} PRIVATE "${_rc_file}")
     endif()
 endfunction()
@@ -737,53 +736,48 @@ function(package_install)
         # '~' sorts before it, which is what a pre-release must do.
         string(REPLACE "-" "~" CPACK_DEBIAN_PACKAGE_VERSION "${_package_version}")
 
-        # Install XDG .desktop files and icon theme assets for executables that should get desktop
-        # launcher integration. Defaults to all executables if DESKTOP_LINKS was not passed to
-        # package_create(). Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
+        # Install XDG .desktop files and icon theme assets for every packaged executable: the
+        # launcher entry is the Linux Start Menu entry, which DESKTOP_LINKS (desktop shortcuts)
+        # never governs. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
         # otherwise falls back to expecting a <target>.desktop file in the same directory as the
         # target's CMakeLists.txt. Linux icon assets are installed from LINUX_ICON_THEME_DIR, which
         # is expected to contain a hicolor/... tree rooted at that directory.
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
-                if(NOT _desktop_links_defined OR rt_target IN_LIST _desktop_link_targets)
-                    get_target_property(_desktop_file ${rt_target}
-                                        PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
-                    if(NOT _desktop_file)
-                        get_target_property(_source_dir ${rt_target} SOURCE_DIR)
-                        set(_desktop_file "${_source_dir}/${rt_target}.desktop")
-                    endif()
-                    if(EXISTS "${_desktop_file}")
+                get_target_property(_desktop_file ${rt_target} PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
+                if(NOT _desktop_file)
+                    get_target_property(_source_dir ${rt_target} SOURCE_DIR)
+                    set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                endif()
+                if(EXISTS "${_desktop_file}")
+                    install(
+                        FILES "${_desktop_file}"
+                        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+                        COMPONENT Runtime)
+                else()
+                    message(
+                        WARNING
+                            "PackageBuilder: No .desktop file found for '${rt_target}' at "
+                            "${_desktop_file}. Skipping Linux desktop integration for this target.")
+                endif()
+
+                get_target_property(_desktop_icon_dir ${rt_target}
+                                    PACKAGE_BUILDER_LINUX_ICON_THEME_DIR)
+                if(_desktop_icon_dir)
+                    if(EXISTS "${_desktop_icon_dir}")
                         install(
-                            FILES "${_desktop_file}"
-                            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
-                            COMPONENT Runtime)
+                            DIRECTORY "${_desktop_icon_dir}/"
+                            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
+                            COMPONENT Runtime
+                            FILES_MATCHING
+                            PATTERN "*.png"
+                            PATTERN "*.svg")
                     else()
                         message(
-                            WARNING
-                                "PackageBuilder: No .desktop file found for '${rt_target}' at "
-                                "${_desktop_file}. Skipping Linux desktop integration for this target."
-                        )
-                    endif()
-
-                    get_target_property(_desktop_icon_dir ${rt_target}
-                                        PACKAGE_BUILDER_LINUX_ICON_THEME_DIR)
-                    if(_desktop_icon_dir)
-                        if(EXISTS "${_desktop_icon_dir}")
-                            install(
-                                DIRECTORY "${_desktop_icon_dir}/"
-                                DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
-                                COMPONENT Runtime
-                                FILES_MATCHING
-                                PATTERN "*.png"
-                                PATTERN "*.svg")
-                        else()
-                            message(
-                                WARNING
-                                    "PackageBuilder: Desktop icon directory for '${rt_target}' "
+                            WARNING "PackageBuilder: Desktop icon directory for '${rt_target}' "
                                     "does not exist at ${_desktop_icon_dir}. Skipping Linux icon "
                                     "installation for this target.")
-                        endif()
                     endif()
                 endif()
             endif()

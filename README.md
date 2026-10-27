@@ -158,14 +158,14 @@ All other arguments after the target name are forwarded to `add_executable()` as
 
 On Windows, every executable created with `package_add_executable` also gets version information, which Explorer shows under Properties → Details: the numeric `FILEVERSION` and `PRODUCTVERSION` carry `PROJECT_VERSION`, the `File version` and `Product version` text carries the full package version (`1.0.0-alpha`), and the `File description` and `Product name` carry the target's `DISPLAY_NAME` (or its output name when none is given).
 
-A target created outside PackageBuilder can carry the same version information through `package_write_version_resource(<out_var> <target>)`, which writes the resource script and returns its path. Call it after `package_register_target`, so the display name is known. When the target's own tooling writes its resource script, include this one from it. For a JUCE app, JUCE's generated resource script includes `JUCE_USER_DEFINED_RC_FILE` in place of its own version block:
+A target created outside PackageBuilder can carry the same version information, and its registered `ICON`, through `package_write_resource_script(<out_var> <target>)`, which writes the resource script and returns its path. Call it after `package_register_target`, so the display name and icon are known. When the target's own tooling writes its resource script, include this one from it. For a JUCE app, JUCE's generated resource script includes `JUCE_USER_DEFINED_RC_FILE` in place of its own version block; leave JUCE's `ICON_BIG` and `ICON_SMALL` unset, so the icon comes from this script alone:
 
 ```cmake
 juce_add_gui_app(my_app PRODUCT_NAME "My App" VERSION ${PROJECT_VERSION})
-package_register_target(my_app DISPLAY_NAME "My App")
+package_register_target(my_app DISPLAY_NAME "My App" ICON resources/my_app.ico)
 if(WIN32)
-    package_write_version_resource(_my_app_version_rc my_app)
-    target_compile_definitions(my_app PRIVATE JUCE_USER_DEFINED_RC_FILE="${_my_app_version_rc}")
+    package_write_resource_script(_my_app_rc my_app)
+    target_compile_definitions(my_app PRIVATE JUCE_USER_DEFINED_RC_FILE="${_my_app_rc}")
 endif()
 ```
 
@@ -264,14 +264,14 @@ development.
 
 ### Desktop shortcuts and launchers
 
-By default, every registered executable gets a desktop shortcut (Windows) or an XDG `.desktop`
-launcher entry (Linux). To limit this to a specific subset, set `PACKAGE_BUILDER_DESKTOP_LINKS` to
-the list of target names that should receive shortcuts before calling `package_install()`:
+Every registered executable gets a Start Menu entry (Windows) and an XDG `.desktop` launcher entry
+(Linux). Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by default; pass
+`DESKTOP_LINKS` to `package_create()` to choose the targets that receive one, or an empty list for
+none:
 
 ```cmake
-# Only my_app gets a Start Menu / desktop shortcut
-set(PACKAGE_BUILDER_DESKTOP_LINKS my_app)
-package_install()
+# Both apps get a desktop shortcut
+package_create(PRIMARY_TARGET my_app DESKTOP_LINKS my_app my_tool)
 ```
 
 | Platform | Behavior |
@@ -378,10 +378,9 @@ package_add_executable(awesome_app src/main.cpp
 
 target_link_libraries(awesome_app PRIVATE MyAwesomeLib::awesome)
 
-# Give awesome_app a Start Menu / desktop shortcut (Windows), install its
+# Give awesome_app a Start Menu entry and desktop shortcut (Windows), install its
 # .desktop file to share/applications (Linux), and install its icon theme
 # assets to share/icons (Linux)
-set(PACKAGE_BUILDER_DESKTOP_LINKS awesome_app)
 package_install()
 ```
 
@@ -405,9 +404,7 @@ package_create()
 # JUCE creates and configures the target internally
 juce_add_gui_app(my_app
     PRODUCT_NAME "My App"
-    VERSION      ${PROJECT_VERSION}
-    ICON_BIG     resources/my_app.ico
-    ICON_SMALL   resources/my_app.ico)
+    VERSION      ${PROJECT_VERSION})
 
 target_sources(my_app PRIVATE main.cpp)
 target_compile_definitions(my_app PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
@@ -415,14 +412,20 @@ target_link_libraries(my_app PRIVATE juce::juce_gui_basics juce::juce_recommende
 
 # Register the JUCE target so PackageBuilder includes it in install/CPack output
 package_register_target(my_app
+    DISPLAY_NAME         "My App"
     ICON                 resources/my_app.ico
     LINUX_DESKTOP_FILE   resources/my_app.desktop
     LINUX_ICON_THEME_DIR resources/icons)
 
-# Give my_app a Start Menu / desktop shortcut (Windows), install its .desktop
+# Give the executable its version information and icon through JUCE's own resource script
+if(WIN32)
+    package_write_resource_script(_my_app_rc my_app)
+    target_compile_definitions(my_app PRIVATE JUCE_USER_DEFINED_RC_FILE="${_my_app_rc}")
+endif()
+
+# Give my_app a Start Menu entry and desktop shortcut (Windows), install its .desktop
 # file to share/applications (Linux), and install its icon theme assets to
 # share/icons (Linux)
-set(PACKAGE_BUILDER_DESKTOP_LINKS my_app)
 package_install()
 ```
 
