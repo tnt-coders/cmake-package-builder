@@ -149,13 +149,25 @@ a build-time convenience only and is not exported to consumers.
 
 | Argument       | Description |
 |----------------|-------------|
+| `DISPLAY_NAME`         | Human-readable name for the executable: its shortcut label and, on Windows, its `File description` and `Product name`. Defaults to the executable's output name. |
 | `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable and also uses it as the NSIS installer/uninstaller icon. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
 
 All other arguments after the target name are forwarded to `add_executable()` as source files.
 
-On Windows, every executable created with `package_add_executable` also gets version information, which Explorer shows under Properties → Details: the numeric `FILEVERSION` and `PRODUCTVERSION` carry `PROJECT_VERSION`, and the `File version` and `Product version` text carries the full package version (`1.0.0-alpha`). Targets created outside PackageBuilder keep whatever version resource their own tooling writes.
+On Windows, every executable created with `package_add_executable` also gets version information, which Explorer shows under Properties → Details: the numeric `FILEVERSION` and `PRODUCTVERSION` carry `PROJECT_VERSION`, the `File version` and `Product version` text carries the full package version (`1.0.0-alpha`), and the `File description` and `Product name` carry the target's `DISPLAY_NAME` (or its output name when none is given).
+
+A target created outside PackageBuilder can carry the same version information through `package_write_version_resource(<out_var> <target>)`, which writes the resource script and returns its path. Call it after `package_register_target`, so the display name is known. When the target's own tooling writes its resource script, include this one from it. For a JUCE app, JUCE's generated resource script includes `JUCE_USER_DEFINED_RC_FILE` in place of its own version block:
+
+```cmake
+juce_add_gui_app(my_app PRODUCT_NAME "My App" VERSION ${PROJECT_VERSION})
+package_register_target(my_app DISPLAY_NAME "My App")
+if(WIN32)
+    package_write_version_resource(_my_app_version_rc my_app)
+    target_compile_definitions(my_app PRIVATE JUCE_USER_DEFINED_RC_FILE="${_my_app_version_rc}")
+endif()
+```
 
 ### Register Existing Targets
 

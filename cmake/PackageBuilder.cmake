@@ -193,12 +193,67 @@ function(package_register_target target)
     _package_register_target_impl(${target} ${ARGN})
 endfunction()
 
+# Writes a Windows resource script holding the version information of a registered target and
+# returns its path in out_var. FILEVERSION and PRODUCTVERSION are four 16-bit integers, so they carry
+# the numeric PROJECT_VERSION; the text Explorer shows carries the full package version and the
+# target's display name. package_add_executable() compiles it into every executable it creates;
+# a target whose own tooling writes its resource script (JUCE's juce_add_gui_app, through
+# JUCE_USER_DEFINED_RC_FILE) can include it instead. Call it after the target is registered, so the
+# display name is known. The file is rewritten only when its content changes, so a configure does
+# not relink the executable.
+function(package_write_version_resource out_var target)
+    _package_check_initialized()
+
+    get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
+    set(_numeric_version)
+    foreach(_part IN ITEMS MAJOR MINOR PATCH TWEAK)
+        if("${PROJECT_VERSION_${_part}}" STREQUAL "")
+            list(APPEND _numeric_version 0)
+        else()
+            list(APPEND _numeric_version "${PROJECT_VERSION_${_part}}")
+        endif()
+    endforeach()
+    list(JOIN _numeric_version "," _numeric_version)
+
+    # A resource script string escapes a quote by doubling it.
+    _package_get_shortcut_label(_display_name ${target})
+    string(REPLACE "\"" "\"\"" _display_name "${_display_name}")
+
+    set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_version.rc")
+    string(
+        CONCAT _rc_content
+               "1 VERSIONINFO\n"
+               "FILEVERSION ${_numeric_version}\n"
+               "PRODUCTVERSION ${_numeric_version}\n"
+               "FILEOS 0x40004\n" # VOS_NT_WINDOWS32
+               "FILETYPE 0x1\n" # VFT_APP
+               "BEGIN\n"
+               "    BLOCK \"StringFileInfo\"\n"
+               "    BEGIN\n"
+               "        BLOCK \"040904B0\"\n"
+               "        BEGIN\n"
+               "            VALUE \"FileDescription\", \"${_display_name}\"\n"
+               "            VALUE \"FileVersion\", \"${_package_version}\"\n"
+               "            VALUE \"ProductName\", \"${_display_name}\"\n"
+               "            VALUE \"ProductVersion\", \"${_package_version}\"\n"
+               "        END\n"
+               "    END\n"
+               "    BLOCK \"VarFileInfo\"\n"
+               "    BEGIN\n"
+               "        VALUE \"Translation\", 0x409, 1200\n"
+               "    END\n"
+               "END\n")
+    file(CONFIGURE OUTPUT "${_rc_file}" CONTENT "${_rc_content}" @ONLY)
+    set(${out_var}
+        "${_rc_file}"
+        PARENT_SCOPE)
+endfunction()
+
 # Creates and registers an executable target using PackageBuilder's conventional private include
 # defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and
 # LINUX_ICON_THEME_DIR as packaging metadata; all other arguments are forwarded to add_executable()
-# as sources. On Windows, PackageBuilder also generates a resource file that gives the executable
-# version information (the numeric PROJECT_VERSION, and the full package version as text) and, when
-# ICON is provided, that icon.
+# as sources. On Windows, PackageBuilder also compiles in the target's version resource
+# (package_write_version_resource()) and, when ICON is provided, that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
@@ -212,49 +267,6 @@ function(package_add_executable target)
     target_include_directories(
         ${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include
                           ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-    if(WIN32)
-        # VERSIONINFO's FILEVERSION and PRODUCTVERSION are four 16-bit integers, so they carry the
-        # numeric PROJECT_VERSION; the text fields Explorer shows carry the full package version.
-        get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
-        set(_numeric_version)
-        foreach(_part IN ITEMS MAJOR MINOR PATCH TWEAK)
-            if("${PROJECT_VERSION_${_part}}" STREQUAL "")
-                list(APPEND _numeric_version 0)
-            else()
-                list(APPEND _numeric_version "${PROJECT_VERSION_${_part}}")
-            endif()
-        endforeach()
-        list(JOIN _numeric_version "," _numeric_version)
-
-        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
-        file(
-            WRITE "${_rc_file}"
-            "1 VERSIONINFO\n"
-            "FILEVERSION ${_numeric_version}\n"
-            "PRODUCTVERSION ${_numeric_version}\n"
-            "FILEOS 0x40004\n" # VOS_NT_WINDOWS32
-            "FILETYPE 0x1\n" # VFT_APP
-            "BEGIN\n"
-            "    BLOCK \"StringFileInfo\"\n"
-            "    BEGIN\n"
-            "        BLOCK \"040904B0\"\n"
-            "        BEGIN\n"
-            "            VALUE \"FileVersion\", \"${_package_version}\"\n"
-            "            VALUE \"ProductVersion\", \"${_package_version}\"\n"
-            "        END\n"
-            "    END\n"
-            "    BLOCK \"VarFileInfo\"\n"
-            "    BEGIN\n"
-            "        VALUE \"Translation\", 0x409, 1200\n"
-            "    END\n"
-            "END\n")
-        if(PACKAGE_EXEC_ICON)
-            _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
-            file(APPEND "${_rc_file}" "IDI_ICON1 ICON \"${_icon_abs}\"\n")
-        endif()
-        target_sources(${target} PRIVATE "${_rc_file}")
-    endif()
 
     set(_register_args)
     if(PACKAGE_EXEC_DISPLAY_NAME)
@@ -271,6 +283,19 @@ function(package_add_executable target)
     endif()
 
     _package_register_target_impl(${target} ${_register_args})
+
+    # Registered first, so the version resource carries the target's display name.
+    if(WIN32)
+        package_write_version_resource(_version_rc ${target})
+        set(_rc_content "#include \"${_version_rc}\"\n")
+        if(PACKAGE_EXEC_ICON)
+            _package_make_paths_absolute(_icon_abs "${PACKAGE_EXEC_ICON}")
+            string(APPEND _rc_content "IDI_ICON1 ICON \"${_icon_abs}\"\n")
+        endif()
+        set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
+        file(CONFIGURE OUTPUT "${_rc_file}" CONTENT "${_rc_content}" @ONLY)
+        target_sources(${target} PRIVATE "${_rc_file}")
+    endif()
 endfunction()
 
 # Creates and registers a library target, wiring conventional public/private include paths and the
