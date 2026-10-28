@@ -674,10 +674,15 @@ function(package_install)
     # The archive and DEB generators install every component unless they run in component mode;
     # grouping all listed components into one package keeps one package per generator, named
     # CPACK_PACKAGE_FILE_NAME as before. The project configuration file keeps the archives' top-level
-    # directory, which component mode would drop.
+    # directory, which component mode would drop. CPack reads only one such file, so a file the
+    # caller named in CPACK_PROJECT_CONFIG_FILE moves to CPACK_PACKAGE_BUILDER_PROJECT_CONFIG_FILE,
+    # which PackageBuilder's file includes after its own settings.
     set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
     set(CPACK_DEB_COMPONENT_INSTALL ON)
     set(CPACK_COMPONENTS_GROUPING ALL_COMPONENTS_IN_ONE)
+    if(CPACK_PROJECT_CONFIG_FILE)
+        set(CPACK_PACKAGE_BUILDER_PROJECT_CONFIG_FILE "${CPACK_PROJECT_CONFIG_FILE}")
+    endif()
     set(CPACK_PROJECT_CONFIG_FILE
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PackageBuilderCPackOptions.cmake")
 
@@ -897,7 +902,13 @@ function(package_install)
         # Launchpad handles discovery automatically. No desktop shortcut action needed.
     else()
         set(CPACK_GENERATOR "ZIP;DEB")
-        set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${PROJECT_NAME} maintainers")
+        # A Debian package must name a maintainer, which CPack takes from
+        # CPACK_DEBIAN_PACKAGE_MAINTAINER, or else from CPACK_PACKAGE_CONTACT. Either one the
+        # caller sets wins; without them the contact is the vendor. A package that names none of
+        # the three fails with CPack's own error, which names both variables.
+        if(NOT CPACK_PACKAGE_CONTACT AND _vendor)
+            set(CPACK_PACKAGE_CONTACT "${_vendor}")
+        endif()
         # dpkg reads '-' as the start of a Debian revision, which sorts AFTER the bare version;
         # '~' sorts before it, which is what a pre-release must do.
         string(REPLACE "-" "~" CPACK_DEBIAN_PACKAGE_VERSION "${_package_version}")

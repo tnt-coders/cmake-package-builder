@@ -13,6 +13,7 @@
 ## Prerequisites
 
 - CMake 3.24 or higher
+- [NSIS](https://nsis.sourceforge.io/) to build the Windows installer
 
 ---
 
@@ -70,6 +71,11 @@ FetchContent_MakeAvailable(PackageBuilder)
 include(PackageBuilder)
 ```
 
+Added this way, PackageBuilder contributes only its module: it packages nothing of its own and adds
+no docs or lint targets to your build. `include(PackageBuilder)` finds the module because
+`FetchContent_MakeAvailable()` runs in your scope; call it from your project's directory scope, not
+from inside a function.
+
 This allows you to immediately hit the ground running with professional quality install/package creation logic for your own project.
 
 ### Method 3: find_package (Classic)
@@ -81,9 +87,12 @@ Build and install PackageBuilder to your system, then find it like any other CMa
 ```
 git clone https://github.com/tnt-coders/cmake-package-builder
 cd cmake-package-builder
-cmake -B build
+cmake -B build -DINCLUDE_PROJECT_CONFIG=OFF
 cmake --install build
 ```
+
+`INCLUDE_PROJECT_CONFIG=OFF` skips the repository's own docs and lint tooling, which lives in the
+`project-config` submodule that a plain clone leaves empty.
 
 **Consume:**
 
@@ -110,7 +119,7 @@ package_create()
 This function performs essential validation before any targets are defined:
 
 - **Version verification:** Verifies that `PROJECT_VERSION` is set and fails with a fatal error if it is not. `PROJECT_VERSION` is typically set by specifying the version in the `project()` command.
-- **Package version:** The installers carry `PROJECT_VERSION` unless `VERSION` overrides it with that version plus a SemVer pre-release or build suffix, e.g. `package_create(VERSION 1.0.0-alpha)` under `project(MyProject VERSION 1.0.0)`; any other value is a fatal error. `project()` and the numeric platform version fields (Windows VERSIONINFO's `FILEVERSION` and `PRODUCTVERSION`, Apple plists) accept integers only, so they keep the numeric version while installer file names, displayed versions and the Windows version text fields carry the full one. Debian packages spell the suffix with `~` (`1.0.0~alpha`) so that a pre-release sorts before its final release.
+- **Package version:** The installers carry `PROJECT_VERSION` unless `VERSION` overrides it with that version plus an optional SemVer pre-release or build suffix, e.g. `package_create(VERSION 1.0.0-alpha)` under `project(MyProject VERSION 1.0.0)`; any other value is a fatal error. `project()` and the numeric platform version fields (Windows VERSIONINFO's `FILEVERSION` and `PRODUCTVERSION`, Apple plists) accept integers only, so they keep the numeric version while installer file names, displayed versions and the Windows version text fields carry the full one. Debian packages spell the suffix with `~` (`1.0.0~alpha`) so that a pre-release sorts before its final release.
 - **Description verification:** Verifies that `PROJECT_DESCRIPTION` is set and fails with a fatal error if it is not. Set via the `DESCRIPTION` argument in the `project()` command.
 - **License verification:** Verifies that a `LICENSE` file exists at the project root. This is required for CPack packaging.
 
@@ -118,9 +127,9 @@ It also takes the package's identity, all optional:
 
 | Argument | Description |
 |----------|-------------|
-| `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, and the parent folder of the Windows install directory. Without it, CPack's default vendor applies and the install directory has no parent folder. |
+| `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, the parent folder of the Windows install directory, and the Debian maintainer unless you name one, so a Linux package with neither fails to build its DEB (see [Packaging Behavior](#packaging-behavior)). Without it, CPack's default vendor applies and the install directory has no parent folder. |
 | `DISPLAY_NAME` | The package's name on Windows: the installer title, the *Apps & features* entry, the Start Menu folder, the install directory and the registry key. Defaults to the `PRIMARY_TARGET`'s display name, then `PROJECT_NAME`. |
-| `ICON` | The installer, uninstaller and *Apps & features* icon. Defaults to the `PRIMARY_TARGET`'s icon. |
+| `ICON` | The installer, uninstaller and *Apps & features* icon, installed to `bin` in `Runtime` for the latter. Defaults to the `PRIMARY_TARGET`'s icon. |
 | `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default. It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
 | `DESKTOP_LINKS` | See [Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers). |
 | `MENU_LINKS` | See [Start Menu links](#start-menu-links). |
@@ -178,7 +187,7 @@ a build-time convenience only and is not exported to consumers.
 | Argument       | Description |
 |----------------|-------------|
 | `DISPLAY_NAME`         | Human-readable name for the executable: its shortcut label and, on Windows, its `File description` and `Product name`. Defaults to the executable's output name. |
-| `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable and also uses it as the NSIS installer/uninstaller icon. Changing the icon re-runs CMake; that is how the compiled resource learns of it. Paths may be relative to the calling `CMakeLists.txt`. |
+| `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable; the `PRIMARY_TARGET`'s icon is also the NSIS installer/uninstaller icon unless `package_create()` sets its own `ICON`. Changing the icon re-runs CMake; that is how the compiled resource learns of it. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
 | `COMPONENT`            | The install component that carries the executable and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
@@ -229,13 +238,13 @@ package_register_target(my_lib PUBLIC_HEADER_DIRS include)
 ```
 
 `package_register_target` accepts the same `DISPLAY_NAME`, `ICON`, `LINUX_DESKTOP_FILE`,
-`LINUX_ICON_THEME_DIR`, and `COMPONENT` arguments as `package_add_executable`; `COMPONENT` applies
-to targets with runtime artifacts only.
-For externally created targets, `ICON` is packaging metadata only; it is
-used for the NSIS installer/uninstaller icon on Windows, but it does not modify the executable's
-own resources. `package_register_target` does not create the target, add sources, add include
-directories, or create a namespaced build-tree alias. Those details remain the responsibility of
-the project that created the target.
+`LINUX_ICON_THEME_DIR`, and `COMPONENT` arguments as `package_add_executable`; a `COMPONENT` on a
+target without runtime artifacts (an executable, shared library or module library) is a configure
+error. For externally created targets, `ICON` is packaging metadata: it serves as the installer icon
+as above, but reaches the executable's own resources only through
+[`package_write_resource_script`](#add-targets). `package_register_target` does not create the
+target, add sources, add include directories, or create a namespaced build-tree alias. Those
+details remain the responsibility of the project that created the target.
 
 ### Generate Package Install Logic
 
@@ -247,9 +256,9 @@ This single call handles everything:
 
 - Installs all targets registered via `package_add_library`, `package_add_executable`, and
   `package_register_target`
-- Installs public headers from `include/` or any `PUBLIC_HEADER_DIRS` provided while registering
-  external libraries
-- Installs any custom CMake modules from `cmake/`
+- Installs public headers (files matching `*.h*`) from `include/` or any `PUBLIC_HEADER_DIRS`
+  provided while registering external libraries
+- Installs any custom CMake modules (`*.cmake` and `*.in` files) from `cmake/`
 - With MSVC, installs the [C++ runtime](#msvc-c-runtime) beside any executable, shared library or
   module library
 - Generates and installs `<ProjectName>Config.cmake` and `<ProjectName>ConfigVersion.cmake`
@@ -272,6 +281,25 @@ target_link_libraries(myapp PRIVATE MyProject::mylib)
 | Windows  | ZIP, NSIS      |
 | macOS    | ZIP, DragNDrop |
 | Linux    | ZIP, DEB       |
+
+A project with no executable, shared library or module library gets install rules but no CPack
+configuration.
+
+`package_install()` includes `CPack` itself, so other `CPACK_*` variables set before the call reach
+CPack. The ones PackageBuilder sets from the package's identity, version, components, generators and
+Windows shortcuts and icons overwrite any value you set; `CPACK_NSIS_CREATE_ICONS_EXTRA` and
+`CPACK_NSIS_DELETE_ICONS_EXTRA` are appended to.
+
+A Debian package must name a maintainer. Set `CPACK_PACKAGE_CONTACT` (or
+`CPACK_DEBIAN_PACKAGE_MAINTAINER`, which takes precedence) before `package_install()`, in Debian's
+`Name <email>` form. Without either, PackageBuilder uses the `VENDOR` passed to `package_create()`;
+a package that names none of the three fails to build its DEB with CPack's error naming both
+variables.
+
+PackageBuilder uses CPack's project configuration file (`CPACK_PROJECT_CONFIG_FILE`) for its own
+per-generator settings. A file you name in `CPACK_PROJECT_CONFIG_FILE` before `package_install()`
+still runs: PackageBuilder's file includes it last, once per generator, so your settings override
+PackageBuilder's.
 
 Multiple registered applications — including macOS app bundles created by external CMake helpers —
 are supported in a single package. Each registered runtime target gets its own runtime dependency
@@ -334,10 +362,10 @@ package_install()
 
 ### Desktop shortcuts and launchers
 
-Every packaged executable gets a Start Menu entry (Windows) and an XDG `.desktop` launcher entry
-(Linux). Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by default; pass
-`DESKTOP_LINKS` to `package_create()` to choose the targets that receive one, or an empty list for
-none. Targets in `DESKTOP_LINKS` whose component is not listed get none:
+Every packaged executable gets a Start Menu entry (Windows), and an XDG launcher entry (Linux) when
+it has a `.desktop` file. Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by
+default; pass `DESKTOP_LINKS` to `package_create()` to choose the targets that receive one, or an
+empty list for none. Targets in `DESKTOP_LINKS` whose component is not listed get none:
 
 ```cmake
 # Both apps get a desktop shortcut
@@ -347,7 +375,7 @@ package_create(PRIMARY_TARGET my_app DESKTOP_LINKS my_app my_tool)
 | Platform | Behavior |
 |----------|----------|
 | Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The package's [`MENU_LINKS`](#start-menu-links) join the executables' Start Menu entries. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
-| Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder looks for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`; an executable with neither is a command-line tool and gets no launcher entry. Only a `LINUX_DESKTOP_FILE` that does not exist draws a configure warning. |
+| Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the `.png` and `.svg` files of the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder looks for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`; an executable with neither is a command-line tool and gets no launcher entry. Only a `LINUX_DESKTOP_FILE` or `LINUX_ICON_THEME_DIR` that does not exist draws a configure warning. |
 | macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
 
 ### Start Menu links
@@ -394,12 +422,16 @@ package_install()
 ### Windows one-click installer
 
 By default (`PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON`), the generated NSIS installer is
-**zero-interaction**: the user double-clicks the installer, it installs the application, creates a
-desktop shortcut, and closes automatically. No wizard pages, no "Next" buttons, no path or
-directory choices.
+**zero-interaction**: the user double-clicks the installer, it installs the application, creates
+the [desktop shortcuts](#desktop-shortcuts-and-launchers), and closes automatically. No wizard
+pages, no "Next" buttons, no path or directory choices.
 
-When set to `OFF`, the installer reverts to the classic NSIS wizard with Welcome, License,
-Directory, Start Menu, and Install pages, plus an opt-in desktop shortcut checkbox.
+When set to `OFF`, the installer reverts to CMake's classic NSIS wizard: Welcome, License, an
+options page (PATH and an opt-in desktop shortcut checkbox), Directory, Start Menu, Components
+(`Runtime` cannot be deselected), Install and Finish pages.
+
+In both modes, an installer that finds an earlier installation under the same registry key first
+asks whether to uninstall it.
 
 ```cmake
 # Default: zero-interaction installer (user just double-clicks)
@@ -412,8 +444,8 @@ package_install()
 
 | Mode | Desktop shortcut | PATH modification | Wizard pages |
 |------|-----------------|-------------------|--------------|
-| `ON` (default) | Always created unconditionally | Never added to PATH | None — installs silently |
-| `OFF` | Opt-in checkbox during install | User-controlled via installer page | Welcome, License, Directory, Start Menu, Finish |
+| `ON` (default) | Created for the `DESKTOP_LINKS` targets without asking | Never added to PATH | None, only install progress |
+| `OFF` | Opt-in checkbox during install | User-controlled via installer page | Welcome, License, options, Directory, Start Menu, Components, Finish |
 
 #### Providing a custom NSIS template
 
@@ -433,8 +465,9 @@ PackageBuilder's lookup order for `NSIS.template.in` (highest to lowest priority
 3. CMake's built-in NSIS template (classic wizard)
 
 A custom template must expand `@CPACK_NSIS_DELETE_ICONS_EXTRA@` after its uninstaller removes
-`$INSTDIR`, as both bundled templates do: PackageBuilder removes the one-click desktop shortcuts and
-the empty vendor folder through it.
+`$INSTDIR`, as PackageBuilder's template and CMake's both do: PackageBuilder removes the one-click
+desktop shortcuts and the empty vendor folder through it. In one-click mode it must also expand
+`@CPACK_NSIS_CREATE_ICONS_EXTRA@`, through which PackageBuilder creates the desktop shortcuts.
 
 ### Including development components
 
@@ -463,8 +496,8 @@ MyProject/
 - The project root is also added as a private include directory for targets created by
   `package_add_library` and `package_add_executable`.
 - Files in `src/` are private to your project and are not installed.
-- Any `.cmake` files in `cmake/` are installed alongside the generated package config, making them
-  available to consumers via `CMAKE_MODULE_PATH`.
+- Any `.cmake` and `.in` files in `cmake/` are installed alongside the generated package config,
+  which adds their directory to consumers' `CMAKE_MODULE_PATH`.
 
 Projects with non-canonical layouts can still use PackageBuilder by creating targets themselves and
 then registering them with `package_register_target(...)`.
@@ -591,6 +624,12 @@ From 1.7.x or 1.8.x:
 - With MSVC, the [C++ runtime](#msvc-c-runtime) now ships in `Runtime`. Remove your own
   `include(InstallRequiredSystemLibraries)`, which would install the same files a second time, or
   set `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP` to keep deploying the runtime yourself.
+- The Debian maintainer is no longer always `<PROJECT_NAME> maintainers`: it is
+  `CPACK_PACKAGE_CONTACT` or `CPACK_DEBIAN_PACKAGE_MAINTAINER` when set, else the package's
+  `VENDOR`. A Linux package with none of the three now fails to build its DEB, so set
+  `CPACK_PACKAGE_CONTACT` or pass `VENDOR` (see [Packaging Behavior](#packaging-behavior)).
+- A `CPACK_PROJECT_CONFIG_FILE` you set now runs, after PackageBuilder's own; 1.7 and 1.8 silently
+  replaced it.
 - Nothing to do for the rest: a Linux configure warns about a `.desktop` file only when
   `LINUX_DESKTOP_FILE` names one that does not exist, and the classic-wizard uninstaller now removes
   the empty vendor folder as the one-click one does.
@@ -611,3 +650,5 @@ From 1.2.0, all of the above, and:
 - **Windows version information.** Every executable `package_add_executable` creates now carries a
   `VERSIONINFO` resource (see [Add Targets](#add-targets)), so such a target must not also compile
   one of its own.
+- **Linux launcher entries.** Every executable with a `.desktop` file installs it; under 1.2.0,
+  `DESKTOP_LINKS` chose which did. `DESKTOP_LINKS` now governs Windows desktop shortcuts only.

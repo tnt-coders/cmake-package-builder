@@ -7,22 +7,35 @@ project(
     DESCRIPTION "Tools to assist with CMake/C++ package development"
     LANGUAGES C CXX)
 
+# Our own modules
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
+# A project that adds PackageBuilder as a subproject (as FetchContent does) needs only the module,
+# which it includes itself, as it would after find_package(). Everything below packages
+# PackageBuilder itself. FetchContent_MakeAvailable() is a macro, so the parent scope is the scope
+# that called it.
+if(NOT PROJECT_IS_TOP_LEVEL)
+    set(CMAKE_MODULE_PATH
+        "${CMAKE_MODULE_PATH}"
+        PARENT_SCOPE)
+    return()
+endif()
+
 # Add project config (disabled for Conan builds where project-config is not exported)
 option(INCLUDE_PROJECT_CONFIG "Include project-config for docs, linting, and CMake presets" ON)
 if(INCLUDE_PROJECT_CONFIG)
 
     # Set project-config specific options
     option(PROJECT_CONFIG_ENABLE_DOCS "Enable docs target when Doxygen is available" ON)
+    # The README is the whole reference for the CMake functions, so it is all the docs document.
+    set(PROJECT_CONFIG_DOCS_INPUT README.md)
     option(PROJECT_CONFIG_ENABLE_CLANG_TIDY
            "Enable clang-tidy target when run-clang-tidy is available" OFF)
 
     add_subdirectory(project-config)
 endif()
 
-# Include our own modules
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-include(PackageBuilder)
-
 # Use our own functions to create/export the package
+include(PackageBuilder)
 package_create()
 package_install()

@@ -9,3 +9,9 @@
 if(CPACK_GENERATOR MATCHES "^(7Z|TBZ2|TGZ|TXZ|TZ|TZST|ZIP)$")
     set(CPACK_COMPONENT_INCLUDE_TOPLEVEL_DIRECTORY ON)
 endif()
+
+# The project configuration file the caller named, which package_install() moved here to put this
+# one in its place. It runs last, so it can override the settings above.
+if(CPACK_PACKAGE_BUILDER_PROJECT_CONFIG_FILE)
+    include("${CPACK_PACKAGE_BUILDER_PROJECT_CONFIG_FILE}")
+endif()
