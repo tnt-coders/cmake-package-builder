@@ -26,14 +26,14 @@ Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/1.0.0") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.0.0") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/1.0.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.0.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -63,7 +63,7 @@ include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
     GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v1.0.0
+    GIT_TAG v2.0.0
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
@@ -123,15 +123,24 @@ It also takes the package's identity, all optional:
 | `ICON` | The installer, uninstaller and *Apps & features* icon. Defaults to the `PRIMARY_TARGET`'s icon. |
 | `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default. It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
 | `DESKTOP_LINKS` | See [Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers). |
+| `MENU_LINKS` | See [Start Menu links](#start-menu-links). |
 | `VERSION` | See above. |
 
-The Windows install directory is `<VENDOR>\<DISPLAY_NAME>` under Program Files and the registry key is `<DISPLAY_NAME>`. Neither carries the version, so a new version installs over the last one rather than beside it:
+The Windows install directory is `<VENDOR>\<DISPLAY_NAME>` under Program Files and the registry key is `<DISPLAY_NAME>`. Neither carries the version, so a new version installs over the last one rather than beside it. The uninstaller removes the `<VENDOR>` folder once the vendor's last product is gone, in both installer modes:
 
 ```cmake
 # Installs to "Program Files\My Company\My Suite"
 package_create(VENDOR "My Company" DISPLAY_NAME "My Suite" ICON resources/my_suite.ico
                PRIMARY_TARGET my_app)
 ```
+
+> [!TIP]
+> **A repository that packages a single command-line tool should pass `DISPLAY_NAME`.** Its one packaged executable is the inferred `PRIMARY_TARGET`, and `DISPLAY_NAME` falls back to that target's display name, which is its output name, before `PROJECT_NAME`. Without `DISPLAY_NAME`, the install directory, registry key and *Apps & features* entry are therefore named after the executable, e.g. `Program Files\my-tool` for an `OUTPUT_NAME` of `my-tool`:
+>
+> ```cmake
+> # Installs to "Program Files\My Company\My Tool" instead of "Program Files\my-tool"
+> package_create(VENDOR "My Company" DISPLAY_NAME "My Tool")
+> ```
 
 ### Add Targets
 
@@ -173,7 +182,6 @@ a build-time convenience only and is not exported to consumers.
 | `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
 | `COMPONENT`            | The install component that carries the executable and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
-| `MENU_LINKS`           | Extra Windows Start Menu links that ship with the executable: `<path> <label>` pairs, where `<path>` is relative to the install directory or is a URL. |
 
 All other arguments after the target name are forwarded to `add_executable()` as source files.
 
@@ -221,8 +229,8 @@ package_register_target(my_lib PUBLIC_HEADER_DIRS include)
 ```
 
 `package_register_target` accepts the same `DISPLAY_NAME`, `ICON`, `LINUX_DESKTOP_FILE`,
-`LINUX_ICON_THEME_DIR`, `COMPONENT`, and `MENU_LINKS` arguments as `package_add_executable`;
-`COMPONENT` applies to targets with runtime artifacts only, and `MENU_LINKS` to executables only.
+`LINUX_ICON_THEME_DIR`, and `COMPONENT` arguments as `package_add_executable`; `COMPONENT` applies
+to targets with runtime artifacts only.
 For externally created targets, `ICON` is packaging metadata only; it is
 used for the NSIS installer/uninstaller icon on Windows, but it does not modify the executable's
 own resources. `package_register_target` does not create the target, add sources, add include
@@ -242,6 +250,8 @@ This single call handles everything:
 - Installs public headers from `include/` or any `PUBLIC_HEADER_DIRS` provided while registering
   external libraries
 - Installs any custom CMake modules from `cmake/`
+- With MSVC, installs the [C++ runtime](#msvc-c-runtime) beside any executable, shared library or
+  module library
 - Generates and installs `<ProjectName>Config.cmake` and `<ProjectName>ConfigVersion.cmake`
 
 Downstream projects can then consume your package:
@@ -273,7 +283,7 @@ PackageBuilder assigns every install artifact to one of two CPack components:
 
 | Component | Contents |
 |-----------|----------|
-| `Runtime` | Executables, macOS app bundles, shared libraries, and the runtime dependencies of every packaged target |
+| `Runtime` | Executables, macOS app bundles, shared libraries, the runtime dependencies of every packaged target, and with MSVC the [C++ runtime](#msvc-c-runtime) |
 | `Development` | Static libraries, public headers, CMake package metadata (exported targets, config/version files, custom modules) |
 
 A runtime target registered with `COMPONENT <name>` goes to that component instead of `Runtime`,
@@ -299,7 +309,11 @@ generator honours it: the ZIP and DEB generators run in component mode with all 
 grouped into one package, so each still produces one file named `<PROJECT_NAME>-<version>-<os>-<arch>`.
 A component left off the list ships in no package, while its targets still build and its install
 rules still run for `cmake --install`. On Windows, an executable whose component is not listed gets
-no Start Menu entry, desktop shortcut or menu link, and cannot be the `PRIMARY_TARGET`.
+no Start Menu entry or desktop shortcut, and cannot be the `PRIMARY_TARGET`.
+
+`Runtime` is required in every installer, so it cannot be deselected: it holds what every packaged
+executable loads, and the files of package-level features such as the [Start Menu
+links](#start-menu-links) belong in it.
 
 ### Runtime-only installers
 
@@ -332,9 +346,50 @@ package_create(PRIMARY_TARGET my_app DESKTOP_LINKS my_app my_tool)
 
 | Platform | Behavior |
 |----------|----------|
-| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. An executable's `MENU_LINKS` add Start Menu links that ship with it. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
-| Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder falls back to looking for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`. |
+| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The package's [`MENU_LINKS`](#start-menu-links) join the executables' Start Menu entries. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
+| Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder looks for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`; an executable with neither is a command-line tool and gets no launcher entry. Only a `LINUX_DESKTOP_FILE` that does not exist draws a configure warning. |
 | macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
+
+### Start Menu links
+
+`package_create(MENU_LINKS <path> <label> ...)` adds Windows Start Menu links beside the
+executables' entries, such as a user guide or a website: `<path> <label>` pairs, where `<path>` is
+relative to the install directory or is a URL. The uninstaller removes them with the rest of the
+Start Menu folder. Install the files they point at in `Runtime`, which every installer carries:
+
+```cmake
+package_create(VENDOR "My Company" DISPLAY_NAME "My Suite"
+               MENU_LINKS "bin/guide/index.html" "My Suite User Guide"
+                          "https://example.com" "My Suite Website")
+
+install(DIRECTORY "${guide_dir}/" DESTINATION "${CMAKE_INSTALL_BINDIR}/guide" COMPONENT Runtime)
+```
+
+PackageBuilder is the one source of the links: setting `CPACK_NSIS_MENU_LINKS` yourself is a
+configure error, since `package_install()` would otherwise drop it silently.
+
+### MSVC C++ runtime
+
+With MSVC, an executable, shared library or module library that links the C++ runtime dynamically
+(`/MD`, the default) needs DLLs that Windows does not carry, and the runtime dependency sets cannot
+bundle them: they exclude everything resolved from `System32`, where an installed Visual C++
+redistributable puts them. So whenever a package has an executable, shared library or module
+library, `package_install()` installs the
+redistributable's whole C++ runtime set (`msvcp140.dll`, `vcruntime140.dll`, and their siblings)
+into `bin` in the `Runtime` component, through CMake's `InstallRequiredSystemLibraries`. The
+Universal CRT it builds on ships with Windows 10 and later and stays out. A package of static or
+header-only libraries ships no runtime, and other compilers install nothing.
+
+A project that links the runtime statically (`/MT`) or deploys it another way opts out before
+calling `package_install()`:
+
+```cmake
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+package_install()
+```
+
+`InstallRequiredSystemLibraries`'s other inputs, such as `CMAKE_INSTALL_DEBUG_LIBRARIES` and
+`CMAKE_INSTALL_UCRT_LIBRARIES`, apply as usual.
 
 ### Windows one-click installer
 
@@ -364,7 +419,7 @@ package_install()
 
 If your project needs a fully custom NSIS installer template, set `PACKAGE_BUILDER_NSIS_TEMPLATE_DIR`
 to the directory containing your `NSIS.template.in` before calling `package_install()`. This
-directory takes the highest priority over PackageBuilder's own template:
+directory takes the highest priority in either installer mode:
 
 ```cmake
 set(PACKAGE_BUILDER_NSIS_TEMPLATE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packaging/nsis")
@@ -374,8 +429,12 @@ package_install()
 PackageBuilder's lookup order for `NSIS.template.in` (highest to lowest priority):
 
 1. `PACKAGE_BUILDER_NSIS_TEMPLATE_DIR` — caller-provided override
-2. PackageBuilder's bundled `cmake/NSIS/` directory (one-click template)
+2. PackageBuilder's bundled `cmake/NSIS/` directory (one-click template, one-click mode only)
 3. CMake's built-in NSIS template (classic wizard)
+
+A custom template must expand `@CPACK_NSIS_DELETE_ICONS_EXTRA@` after its uninstaller removes
+`$INSTDIR`, as both bundled templates do: PackageBuilder removes the one-click desktop shortcuts and
+the empty vendor folder through it.
 
 ### Including development components
 
@@ -500,3 +559,55 @@ resources/icons/
 
 Then set `Icon=my_app` in your `.desktop` file, without a file extension.
 
+---
+
+## Versioning
+
+From 2.0.0 on, every breaking change bumps the major version, so a pin to any 2.x release can move
+to a later 2.x without changes to the consuming project. The installed
+`PackageBuilderConfigVersion.cmake` uses `SameMajorVersion` to the same effect:
+`find_package(PackageBuilder 2)` accepts any 2.x and no 1.x.
+
+Before 2.0.0, two minor releases broke existing builds:
+
+- **1.6.0** renamed `package_write_version_resource()`, added in 1.5.0, to
+  `package_write_resource_script()`, which also writes the target's icon; and on Linux it began
+  installing the `.desktop` file of every executable, independent of `DESKTOP_LINKS`.
+- **1.7.0** dropped the version from the Windows install directory and registry key (CPack's default
+  `<PROJECT_NAME> <version>` became `[<VENDOR>\]<DISPLAY_NAME>`), made the ZIP and DEB packages honour
+  the component list (they had shipped every component, `Development` included), and made a
+  `PRIMARY_TARGET` that is not packaged a configure error. It also added a per-executable
+  `MENU_LINKS`, which 2.0.0 removes.
+
+1.8.0 broke only a configuration 1.7.0 had just made possible: a component list that packages a
+target's `COMPONENT` must name `Runtime` too.
+
+### Upgrading to 2.0.0
+
+From 1.7.x or 1.8.x:
+
+- Pass Start Menu links to `package_create(MENU_LINKS ...)`. The per-executable `MENU_LINKS` is
+  gone, and setting `CPACK_NSIS_MENU_LINKS` yourself is now a configure error.
+- With MSVC, the [C++ runtime](#msvc-c-runtime) now ships in `Runtime`. Remove your own
+  `include(InstallRequiredSystemLibraries)`, which would install the same files a second time, or
+  set `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP` to keep deploying the runtime yourself.
+- Nothing to do for the rest: a Linux configure warns about a `.desktop` file only when
+  `LINUX_DESKTOP_FILE` names one that does not exist, and the classic-wizard uninstaller now removes
+  the empty vendor folder as the one-click one does.
+
+From 1.2.0, all of the above, and:
+
+- **Windows install identity.** 1.2.0 installed to `Program Files\<PROJECT_NAME> <version>` under
+  the registry key `<PROJECT_NAME> <version>`; 2.0.0 installs to
+  `Program Files\[<VENDOR>\]<DISPLAY_NAME>` under `<DISPLAY_NAME>`. A repository that packages one
+  command-line tool and passes no `DISPLAY_NAME` is named after the executable (see the tip under
+  [Create The Package](#create-the-package)), so pass `DISPLAY_NAME`, and `VENDOR` if the publisher
+  should own a folder. The registry key changed, so a 2.0.0 installer does not offer to remove an
+  installation a 1.2.0 one made: uninstall that one once by hand.
+- **Archive contents.** The ZIP and DEB packages carry only `Runtime` by default; under 1.2.0 they
+  also carried `Development` (headers, static libraries, CMake package files). Set
+  `PACKAGE_BUILDER_CPACK_COMPONENTS` to `Runtime Development` before `package_install()` to keep
+  shipping them.
+- **Windows version information.** Every executable `package_add_executable` creates now carries a
+  `VERSIONINFO` resource (see [Add Targets](#add-targets)), so such a target must not also compile
+  one of its own.

@@ -21,18 +21,22 @@ class CMakePackageBuilderTestConan(ConanFile):
 
     def build(self):
         # The sample's only packaged executable is its primary one, so the configure must not warn
-        # that the package lacks a PRIMARY_TARGET. CMake writes warnings to stderr, which is
-        # captured to check and then passed through.
+        # that the package lacks a PRIMARY_TARGET; nor, on Linux, that the command-line tool has no
+        # .desktop file. CMake writes warnings to stderr, which is captured to check and then
+        # passed through.
         cmake = CMake(self)
         stderr = StringIO()
         cmake.configure(stderr=stderr)
         sys.stderr.write(stderr.getvalue())
         if "PRIMARY_TARGET is not set" in stderr.getvalue():
             raise ConanException("The configure warned that the package lacks a PRIMARY_TARGET.")
+        if "desktop integration" in stderr.getvalue():
+            raise ConanException("The configure warned about a .desktop file.")
         cmake.build()
 
     # The configure checks the package configuration; this checks the archive CPack stages from
-    # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed tool and not the unlisted game.
+    # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed tool and not the unlisted game,
+    # and with a dynamically linked MSVC runtime, that runtime beside the tool.
     def test(self):
         self.run(f"cpack -G ZIP -C {self.settings.build_type}", cwd=self.build_folder)
         archives = list(Path(self.build_folder).glob("*.zip"))
@@ -46,6 +50,13 @@ class CMakePackageBuilderTestConan(ConanFile):
             raise ConanException(f"The archive lacks the listed tool: {names}")
         if any("test-game" in name for name in names):
             raise ConanException(f"The archive holds the unlisted game: {names}")
+        if (
+            self.settings.compiler == "msvc"
+            and self.settings.get_safe("compiler.runtime") == "dynamic"
+        ):
+            for runtime in ("msvcp140.dll", "vcruntime140.dll"):
+                if not any(name.endswith(f"bin/{runtime}") for name in names):
+                    raise ConanException(f"The archive lacks the C++ runtime's {runtime}: {names}")
 
         # Neither executable links a library the resolver keeps, so the archive cannot show where
         # their dependencies go; the install script names the component of each dependency rule.

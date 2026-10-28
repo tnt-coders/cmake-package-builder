@@ -28,13 +28,12 @@ endfunction()
 
 # Records an existing target for install/export handling and optionally tracks public header roots
 # for header installation. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, LINUX_ICON_THEME_DIR,
-# COMPONENT, and MENU_LINKS to store per-target packaging metadata. This helper must not mutate
-# target build settings.
+# and COMPONENT to store per-target packaging metadata. This helper must not mutate target build
+# settings.
 function(_package_register_target_impl target)
     cmake_parse_arguments(
         PARSE_ARGV 1 PACKAGE_REGISTER ""
-        "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR;COMPONENT"
-        "PUBLIC_HEADER_DIRS;MENU_LINKS")
+        "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR;COMPONENT" "PUBLIC_HEADER_DIRS")
 
     if(NOT TARGET ${target})
         message(FATAL_ERROR "Target '${target}' does not exist and cannot be registered.")
@@ -52,19 +51,6 @@ function(_package_register_target_impl target)
     elseif(PACKAGE_REGISTER_COMPONENT)
         message(FATAL_ERROR "Target '${target}' installs no runtime artifacts, "
                             "so it cannot take a COMPONENT.")
-    endif()
-
-    # Start Menu links belong to an executable: they are written only when it is packaged.
-    if(PACKAGE_REGISTER_MENU_LINKS)
-        get_target_property(_target_type ${target} TYPE)
-        if(NOT _target_type STREQUAL "EXECUTABLE")
-            message(FATAL_ERROR "Target '${target}' is not an executable, "
-                                "so it cannot take MENU_LINKS.")
-        endif()
-        set_property(
-            TARGET ${target}
-            APPEND
-            PROPERTY PACKAGE_BUILDER_MENU_LINKS ${PACKAGE_REGISTER_MENU_LINKS})
     endif()
 
     # External targets may already be fully configured, so registration only records packaging
@@ -149,13 +135,25 @@ endfunction()
 # initialized. Accepts optional package-level metadata: PRIMARY_TARGET designates the executable
 # that represents the package's Windows identity (display name, installer icon, ARP icon);
 # DISPLAY_NAME overrides the package name derived from PRIMARY_TARGET; ICON overrides the
-# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts; VERSION
-# overrides the package version, which defaults to PROJECT_VERSION, with that version plus a SemVer
-# pre-release or build suffix (1.0.0-alpha); VENDOR names the publisher, which also becomes the
-# parent folder of the Windows install directory.
+# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts; MENU_LINKS
+# adds Windows Start Menu links as <path> <label> pairs, the path relative to the install directory
+# or a URL; VERSION overrides the package version, which defaults to PROJECT_VERSION, with that
+# version plus a SemVer pre-release or build suffix (1.0.0-alpha); VENDOR names the publisher, which
+# also becomes the parent folder of the Windows install directory.
 function(package_create)
-    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE ""
-                          "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION;VENDOR" "DESKTOP_LINKS")
+    cmake_parse_arguments(
+        PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION;VENDOR"
+        "DESKTOP_LINKS;MENU_LINKS")
+
+    if(PACKAGE_CREATE_MENU_LINKS)
+        list(LENGTH PACKAGE_CREATE_MENU_LINKS _menu_link_count)
+        math(EXPR _menu_link_unpaired "${_menu_link_count} % 2")
+        if(_menu_link_unpaired)
+            message(FATAL_ERROR "package_create(MENU_LINKS) must be <path> <label> pairs: "
+                                "${PACKAGE_CREATE_MENU_LINKS}")
+        endif()
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_MENU_LINKS "${PACKAGE_CREATE_MENU_LINKS}")
+    endif()
 
     if(PACKAGE_CREATE_VENDOR)
         set_property(GLOBAL PROPERTY PACKAGE_BUILDER_VENDOR "${PACKAGE_CREATE_VENDOR}")
@@ -301,15 +299,15 @@ endfunction()
 
 # Creates and registers an executable target using PackageBuilder's conventional private include
 # defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE,
-# LINUX_ICON_THEME_DIR, COMPONENT, and MENU_LINKS as packaging metadata; all other arguments are
-# forwarded to add_executable() as sources. On Windows, PackageBuilder also compiles in the target's
-# resource script (package_write_resource_script()): its version information and, when ICON is
-# provided, that icon.
+# LINUX_ICON_THEME_DIR, and COMPONENT as packaging metadata; all other arguments are forwarded to
+# add_executable() as sources. On Windows, PackageBuilder also compiles in the target's resource
+# script (package_write_resource_script()): its version information and, when ICON is provided, that
+# icon.
 function(package_add_executable target)
     _package_check_initialized()
 
     set(_one_value_keywords DISPLAY_NAME ICON LINUX_DESKTOP_FILE LINUX_ICON_THEME_DIR COMPONENT)
-    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC "" "${_one_value_keywords}" "MENU_LINKS")
+    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC "" "${_one_value_keywords}" "")
 
     add_executable(${target} ${PACKAGE_EXEC_UNPARSED_ARGUMENTS})
 
@@ -320,7 +318,7 @@ function(package_add_executable target)
                           ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     set(_register_args)
-    foreach(_keyword ${_one_value_keywords} MENU_LINKS)
+    foreach(_keyword ${_one_value_keywords})
         if(PACKAGE_EXEC_${_keyword})
             list(APPEND _register_args ${_keyword} ${PACKAGE_EXEC_${_keyword}})
         endif()
@@ -369,12 +367,13 @@ endfunction()
 # component not listed are then excluded from every generated package.
 #
 # PackageBuilder defines two components. The Runtime component holds executables, macOS app bundles,
-# shared libraries, and the transitive runtime dependencies of every packaged target — everything an
-# end user needs to run the application. The Development component holds static libraries, public
-# headers, CMake exported target definitions, and generated package config files — everything
-# needed to compile against this project as a library. A runtime target registered with
-# COMPONENT <name> puts its runtime artifacts and its Linux launcher entry in that component instead
-# of Runtime; its dependencies follow it there only while that component is not packaged.
+# shared libraries, the transitive runtime dependencies of every packaged target, and with MSVC the
+# C++ runtime — everything an end user needs to run the application. The Development component
+# holds static libraries, public headers, CMake exported target definitions, and generated package
+# config files — everything needed to compile against this project as a library. A runtime target
+# registered with COMPONENT <name> puts its runtime artifacts and its Linux launcher entry in that
+# component instead of Runtime; its dependencies follow it there only while that component is not
+# packaged.
 #
 # By default, CPACK_COMPONENTS_ALL is Runtime plus every registered COMPONENT, so generated
 # installers ship what end users need. To choose the list, set PACKAGE_BUILDER_CPACK_COMPONENTS
@@ -539,6 +538,24 @@ function(package_install)
                     POST_EXCLUDE_REGEXES
                     ${_post_exclude_regexes})
             endforeach()
+
+            # -----------------------------------------------------------
+            # The MSVC C++ runtime. A runtime target that links it dynamically (/MD, the default)
+            # loads DLLs that Windows does not carry, and the dependency sets above cannot bundle
+            # them: they exclude everything resolved from System32, where an installed
+            # redistributable puts them. InstallRequiredSystemLibraries installs the
+            # redistributable's whole C++ runtime set instead, so a newly used library feature never
+            # needs a DLL the package lacks; the Universal CRT it builds on ships with Windows 10 and
+            # later and stays out. Every runtime target shares it, so it is installed once, in
+            # Runtime, beside the packaged targets' dependencies. A project that links the runtime
+            # statically (/MT) or deploys it another way sets CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP,
+            # which the module honours by installing nothing.
+            # -----------------------------------------------------------
+            if(MSVC)
+                set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
+                set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
+                include(InstallRequiredSystemLibraries)
+            endif()
         endif()
 
         # Export metadata is a development artifact: it is the generated <ProjectName>Targets.cmake
@@ -777,27 +794,25 @@ function(package_install)
         endif()
 
         # -------------------------------------------------------------------
-        # Build CPACK_PACKAGE_EXECUTABLES (packaged executables, label = DISPLAY_NAME) and append
-        # each packaged executable's MENU_LINKS (<install-relative path or URL> <label> pairs) to
-        # CPACK_NSIS_MENU_LINKS, after any the caller set itself.
+        # Build the Start Menu: CPACK_PACKAGE_EXECUTABLES gives each packaged executable an entry
+        # (label = DISPLAY_NAME), and CPACK_NSIS_MENU_LINKS carries the package's MENU_LINKS beside
+        # them. The uninstaller removes both. package_create(MENU_LINKS) is the one source of the
+        # links, so a value the caller set itself would be dropped silently; it is an error instead.
         # -------------------------------------------------------------------
         set(_cpack_executables)
         foreach(rt_target IN LISTS _exe_targets)
             _package_get_output_name(_output_name ${rt_target})
             _package_get_shortcut_label(_label ${rt_target})
             list(APPEND _cpack_executables "${_output_name}" "${_label}")
-
-            get_target_property(_menu_links ${rt_target} PACKAGE_BUILDER_MENU_LINKS)
-            if(_menu_links)
-                list(LENGTH _menu_links _menu_link_count)
-                math(EXPR _menu_link_unpaired "${_menu_link_count} % 2")
-                if(_menu_link_unpaired)
-                    message(FATAL_ERROR "PackageBuilder: MENU_LINKS of '${rt_target}' must be "
-                                        "<path> <label> pairs: ${_menu_links}")
-                endif()
-                list(APPEND CPACK_NSIS_MENU_LINKS ${_menu_links})
-            endif()
         endforeach()
+
+        if(DEFINED CPACK_NSIS_MENU_LINKS)
+            message(
+                FATAL_ERROR
+                    "PackageBuilder: pass Start Menu links to package_create(MENU_LINKS) instead "
+                    "of setting CPACK_NSIS_MENU_LINKS.")
+        endif()
+        get_property(CPACK_NSIS_MENU_LINKS GLOBAL PROPERTY PACKAGE_BUILDER_MENU_LINKS)
 
         # -------------------------------------------------------------------
         # Resolve desktop shortcut targets:
@@ -839,11 +854,42 @@ function(package_install)
                            " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
                     string(APPEND _nsis_delete_icons "Delete \"$DESKTOP\\${_label}.lnk\"\n  ")
                 endforeach()
-                set(CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
-                set(CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
+                string(APPEND CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
+                string(APPEND CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
             else()
                 set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
             endif()
+        endif()
+
+        # -------------------------------------------------------------------
+        # Remove the vendor folder once the vendor's last product is uninstalled. The one-click
+        # template and CMake's classic one both run CPACK_NSIS_DELETE_ICONS_EXTRA after removing the
+        # install directory, the only hook either places there, so the removal rides on it. RMDir
+        # removes the folder only when it is empty, and the suffix check only where the installer
+        # created it: the parent of a folder the user chose on the classic Directory page stays.
+        # -------------------------------------------------------------------
+        if(_vendor)
+            set(_nsis_install_suffix "\\${CPACK_PACKAGE_INSTALL_DIRECTORY}")
+            string(APPEND CPACK_NSIS_DELETE_ICONS_EXTRA "StrLen $0 \"${_nsis_install_suffix}\"\n  "
+                   "StrCpy $0 \"$INSTDIR\" \"\" -$0\n  "
+                   "StrCmp $0 \"${_nsis_install_suffix}\" 0 +2\n  " "  RMDir \"$INSTDIR\\..\"\n  ")
+        endif()
+
+        # -------------------------------------------------------------------
+        # Choose the NSIS template by prepending directories to CMAKE_MODULE_PATH, where CPack's
+        # NSIS generator looks before CMake's built-in template. Precedence (highest to lowest):
+        #   1. PACKAGE_BUILDER_NSIS_TEMPLATE_DIR (caller override, in either mode)
+        #   2. PackageBuilder's own cmake/NSIS/ directory (one-click mode only)
+        #   3. CMake's built-in template (the classic wizard)
+        #
+        # CMAKE_CURRENT_FUNCTION_LIST_DIR resolves to the directory containing PackageBuilder.cmake
+        # regardless of where package_install() is called from (requires CMake 3.17+).
+        # -------------------------------------------------------------------
+        if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NSIS")
+        endif()
+        if(DEFINED PACKAGE_BUILDER_NSIS_TEMPLATE_DIR)
+            list(PREPEND CMAKE_MODULE_PATH "${PACKAGE_BUILDER_NSIS_TEMPLATE_DIR}")
         endif()
     elseif(APPLE)
         set(CPACK_GENERATOR "ZIP;DragNDrop")
@@ -856,13 +902,15 @@ function(package_install)
         # '~' sorts before it, which is what a pre-release must do.
         string(REPLACE "-" "~" CPACK_DEBIAN_PACKAGE_VERSION "${_package_version}")
 
-        # Install XDG .desktop files and icon theme assets for every packaged executable: the
+        # Install XDG .desktop files and icon theme assets for every executable that has them: the
         # launcher entry is the Linux Start Menu entry, which DESKTOP_LINKS (desktop shortcuts)
-        # never governs. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
-        # otherwise falls back to expecting a <target>.desktop file in the same directory as the
-        # target's CMakeLists.txt. Linux icon assets are installed from LINUX_ICON_THEME_DIR, which
-        # is expected to contain a hicolor/... tree rooted at that directory. Both ship in the
-        # executable's component, so they are packaged exactly when it is.
+        # never governs. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set, and
+        # warns when that file is missing; otherwise uses a <target>.desktop file in the same
+        # directory as the target's CMakeLists.txt when there is one. An executable with neither is
+        # a command-line tool, which has no launcher entry. Linux icon assets are installed from
+        # LINUX_ICON_THEME_DIR, which is expected to contain a hicolor/... tree rooted at that
+        # directory. Both ship in the executable's component, so they are packaged exactly when it
+        # is.
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
@@ -870,18 +918,21 @@ function(package_install)
                 get_target_property(_desktop_file ${rt_target} PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
                 if(NOT _desktop_file)
                     get_target_property(_source_dir ${rt_target} SOURCE_DIR)
-                    set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                    set(_desktop_file "")
+                    if(EXISTS "${_source_dir}/${rt_target}.desktop")
+                        set(_desktop_file "${_source_dir}/${rt_target}.desktop")
+                    endif()
                 endif()
                 if(EXISTS "${_desktop_file}")
                     install(
                         FILES "${_desktop_file}"
                         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
                         COMPONENT ${_component})
-                else()
+                elseif(_desktop_file)
                     message(
-                        WARNING
-                            "PackageBuilder: No .desktop file found for '${rt_target}' at "
-                            "${_desktop_file}. Skipping Linux desktop integration for this target.")
+                        WARNING "PackageBuilder: The LINUX_DESKTOP_FILE of '${rt_target}' does not "
+                                "exist at ${_desktop_file}. Skipping Linux desktop integration for "
+                                "this target.")
                 endif()
 
                 get_target_property(_desktop_icon_dir ${rt_target}
@@ -910,22 +961,6 @@ function(package_install)
     # when written to CPackConfig.cmake. Without this, backslashes in paths (e.g. bin\appname) would
     # be interpreted as CMake escape sequences when the file is re-read, corrupting values.
     set(CPACK_VERBATIM_VARIABLES TRUE)
-
-    if(WIN32 AND PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-        # Inject the one-click NSIS template by prepending its directory to CMAKE_MODULE_PATH so
-        # CPack's NSIS generator finds it before CMake's built-in template. Precedence (highest
-        # to lowest):
-        #   1. PACKAGE_BUILDER_NSIS_TEMPLATE_DIR (caller override)
-        #   2. PackageBuilder's own cmake/NSIS/ directory
-        #   3. CMake's built-in templates
-        #
-        # CMAKE_CURRENT_FUNCTION_LIST_DIR resolves to the directory containing PackageBuilder.cmake
-        # regardless of where package_install() is called from (requires CMake 3.17+).
-        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NSIS")
-        if(DEFINED PACKAGE_BUILDER_NSIS_TEMPLATE_DIR)
-            list(PREPEND CMAKE_MODULE_PATH "${PACKAGE_BUILDER_NSIS_TEMPLATE_DIR}")
-        endif()
-    endif()
 
     include(CPack)
 endfunction()

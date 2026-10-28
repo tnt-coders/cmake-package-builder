@@ -12,16 +12,22 @@ include(PackageBuilder)
 message(STATUS "PackageBuilder module was successfully found and included.")
 
 # A two-executable sample whose component list leaves the game out, so the package carries the
-# tool alone, with the tool's Start Menu links and not the game's. The package names no
-# PRIMARY_TARGET, so the tool, its only packaged executable, is the primary one. conanfile.py checks
-# that the configure does not warn about it, that the archive holds the tool and not the game, and
-# that the tool's runtime dependencies install in Runtime while the game's stay in Game.
-package_create(VENDOR "Test Vendor")
+# tool alone, beside the package's Start Menu links. The package names no PRIMARY_TARGET, so the
+# tool, its only packaged executable, is the primary one. The tool is a command-line tool with no
+# .desktop file, which is no reason to warn on Linux. conanfile.py checks that the configure warns
+# about neither, that the archive holds the tool and the MSVC C++ runtime and not the game, and that
+# the tool's runtime dependencies install in Runtime while the game's stay in Game.
+package_create(
+    VENDOR
+    "Test Vendor"
+    MENU_LINKS
+    "bin/guide.html"
+    "Test Guide"
+    "https://example.com/tool"
+    "Test Tool Website")
 
-foreach(_name IN ITEMS game tool)
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/test-${_name}.desktop"
-         "[Desktop Entry]\nType=Application\nName=Test ${_name}\nExec=test-${_name}\n")
-endforeach()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/test-game.desktop"
+     "[Desktop Entry]\nType=Application\nName=Test game\nExec=test-game\n")
 package_add_executable(
     test_game
     main.cpp
@@ -30,28 +36,10 @@ package_add_executable(
     COMPONENT
     Game
     LINUX_DESKTOP_FILE
-    "${CMAKE_CURRENT_BINARY_DIR}/test-game.desktop"
-    MENU_LINKS
-    "bin/game-guide.html"
-    "Test Game Guide")
-package_add_executable(
-    test_tool
-    main.cpp
-    DISPLAY_NAME
-    "Test Tool"
-    COMPONENT
-    Tool
-    LINUX_DESKTOP_FILE
-    "${CMAKE_CURRENT_BINARY_DIR}/test-tool.desktop"
-    MENU_LINKS
-    "bin/tool-guide.html"
-    "Test Tool Guide")
+    "${CMAKE_CURRENT_BINARY_DIR}/test-game.desktop")
+package_add_executable(test_tool main.cpp DISPLAY_NAME "Test Tool" COMPONENT Tool)
 set_target_properties(test_game PROPERTIES OUTPUT_NAME test-game)
 set_target_properties(test_tool PROPERTIES OUTPUT_NAME test-tool)
-set_property(
-    TARGET test_tool
-    APPEND
-    PROPERTY PACKAGE_BUILDER_MENU_LINKS "https://example.com/tool" "Test Tool Website")
 
 set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Tool)
 package_install()
@@ -80,12 +68,19 @@ function(_test_package_configuration)
                      "Test Vendor\\Test Tool")
         _test_expect("registry key" "${CPACK_PACKAGE_INSTALL_REGISTRY_KEY}" "Test Tool")
 
-        # Only the packaged tool gets a Start Menu entry, a desktop shortcut and its links; nothing
-        # of the unlisted game's appears.
+        # Only the packaged tool gets a Start Menu entry and a desktop shortcut; nothing of the
+        # unlisted game's appears. The package's links join the tool's entry.
         _test_expect("executables" "${CPACK_PACKAGE_EXECUTABLES}" "test-tool;Test Tool")
-        _test_expect(
-            "menu links" "${CPACK_NSIS_MENU_LINKS}"
-            "bin/tool-guide.html;Test Tool Guide;https://example.com/tool;Test Tool Website")
+        _test_expect("menu links" "${CPACK_NSIS_MENU_LINKS}"
+                     "bin/guide.html;Test Guide;https://example.com/tool;Test Tool Website")
+
+        # The uninstaller removes the vendor folder it created once it is empty.
+        string(FIND "${CPACK_NSIS_DELETE_ICONS_EXTRA}" "RMDir \"$INSTDIR\\..\"" _found)
+        if(_found EQUAL -1)
+            message(FATAL_ERROR "the uninstaller keeps the vendor folder:\n"
+                                "${CPACK_NSIS_DELETE_ICONS_EXTRA}")
+        endif()
+
         set(_shortcuts "${CPACK_NSIS_CREATE_ICONS_EXTRA}")
         string(FIND "${_shortcuts}" "$DESKTOP\\Test Tool.lnk" _found)
         if(_found EQUAL -1)
