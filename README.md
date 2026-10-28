@@ -27,14 +27,14 @@ Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/2.0.2") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.0.3") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/2.0.2 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.0.3 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -64,7 +64,7 @@ include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
     GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v2.0.2
+    GIT_TAG v2.0.3
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
@@ -130,7 +130,7 @@ It also takes the package's identity, all optional:
 | `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, the parent folder of the Windows install directory, and the Debian maintainer unless you name one, so a Linux package with neither fails to build its DEB (see [Packaging Behavior](#packaging-behavior)). Without it, CPack's default vendor applies and the install directory has no parent folder. |
 | `DISPLAY_NAME` | The package's name on Windows: the installer title, the *Apps & features* entry, the Start Menu folder, the install directory and the registry key. Defaults to the `PRIMARY_TARGET`'s display name, then `PROJECT_NAME`. |
 | `ICON` | The installer, uninstaller and *Apps & features* icon, installed to `bin` in `Runtime` for the latter. Defaults to the `PRIMARY_TARGET`'s icon. |
-| `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default. It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
+| `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default when it is a [GUI executable](#desktop-shortcuts-and-launchers). It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
 | `DESKTOP_LINKS` | See [Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers). |
 | `MENU_LINKS` | See [Start Menu links](#start-menu-links). |
 | `VERSION` | See above. |
@@ -160,8 +160,8 @@ package_add_library(mylib src/mylib.cpp)
 # Create an executable
 package_add_executable(myapp src/main.cpp)
 
-# Create an executable with packaging metadata
-package_add_executable(myapp src/main.cpp
+# Create a GUI executable with packaging metadata
+package_add_executable(myapp WIN32 src/main.cpp
     ICON                 resources/myapp.ico
     LINUX_DESKTOP_FILE   resources/myapp.desktop
     LINUX_ICON_THEME_DIR resources/icons)
@@ -192,7 +192,7 @@ a build-time convenience only and is not exported to consumers.
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
 | `COMPONENT`            | The install component that carries the executable and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
 
-All other arguments after the target name are forwarded to `add_executable()` as source files.
+All other arguments after the target name are forwarded to `add_executable()`: the source files, and `WIN32` for a GUI executable, which on Windows gets [shortcuts](#desktop-shortcuts-and-launchers) where a command-line tool gets none.
 
 On Windows, every executable created with `package_add_executable` also gets version information, which Explorer shows under Properties → Details: the numeric `FILEVERSION` and `PRODUCTVERSION` carry `PROJECT_VERSION`, the `File version` and `Product version` text carries the full package version (`1.0.0-alpha`), and the `File description` and `Product name` carry the target's `DISPLAY_NAME` (or its output name when none is given).
 
@@ -213,7 +213,7 @@ If your target is created outside PackageBuilder, such as by `add_executable` or
 helper, register it for install, export, and CPack handling with `package_register_target`:
 
 ```cmake
-add_executable(my_app main.cpp)
+add_executable(my_app WIN32 main.cpp)
 target_include_directories(my_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 package_register_target(my_app
@@ -362,25 +362,41 @@ package_install()
 
 ### Desktop shortcuts and launchers
 
-Every packaged executable gets a Start Menu entry (Windows), and an XDG launcher entry (Linux) when
-it has a `.desktop` file. Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by
-default; pass `DESKTOP_LINKS` to `package_create()` to choose the targets that receive one, or an
-empty list for none. Targets in `DESKTOP_LINKS` whose component is not listed get none:
+Every packaged GUI executable gets a Start Menu entry (Windows), and every packaged executable with
+a `.desktop` file an XDG launcher entry (Linux). On Windows, a GUI executable is one whose
+`WIN32_EXECUTABLE` property is true, as `package_add_executable(my_app WIN32 ...)`,
+`add_executable(my_app WIN32 ...)` and JUCE's `juce_add_gui_app` make it; a generator-expression
+value counts as true. Any other executable is a command-line tool, for which a shortcut would only
+open a console window, so it gets no Start Menu entry or desktop shortcut, as on Linux an executable
+without a `.desktop` file gets no launcher entry. A GUI program that still links as a console
+application (some SDL games) counts as one too: set its `WIN32_EXECUTABLE` to `TRUE`, with
+`/ENTRY:mainCRTStartup` under MSVC to keep a plain `main()`, or keep its console and give it a
+`MENU_LINKS` entry. A command-line tool that should still appear in the Start Menu takes a
+[`MENU_LINKS`](#start-menu-links) entry, such as `MENU_LINKS "bin/my-tool.exe" "My Tool"`.
+
+Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by default when it is a GUI
+executable; pass `DESKTOP_LINKS` to `package_create()` to choose the GUI executables that receive
+one, or an empty list for none. Targets in `DESKTOP_LINKS` whose component is not listed get none,
+and a listed command-line tool gets none with a configure warning:
 
 ```cmake
 # Both apps get a desktop shortcut
 package_create(PRIMARY_TARGET my_app DESKTOP_LINKS my_app my_tool)
+
+# The GUI primary target gets no desktop shortcut. Quote the empty list: a bare DESKTOP_LINKS
+# counts as not given
+package_create(PRIMARY_TARGET my_app DESKTOP_LINKS "")
 ```
 
 | Platform | Behavior |
 |----------|----------|
-| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The package's [`MENU_LINKS`](#start-menu-links) join the executables' Start Menu entries. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
+| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The package's [`MENU_LINKS`](#start-menu-links) join the GUI executables' Start Menu entries. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
 | Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the `.png` and `.svg` files of the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder looks for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`; an executable with neither is a command-line tool and gets no launcher entry. Only a `LINUX_DESKTOP_FILE` or `LINUX_ICON_THEME_DIR` that does not exist draws a configure warning. |
 | macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
 
 ### Start Menu links
 
-`package_create(MENU_LINKS <path> <label> ...)` adds Windows Start Menu links beside the
+`package_create(MENU_LINKS <path> <label> ...)` adds Windows Start Menu links beside the GUI
 executables' entries, such as a user guide or a website: `<path> <label>` pairs, where `<path>` is
 relative to the install directory or is a URL. The uninstaller removes them with the rest of the
 Start Menu folder. Install the files they point at in `Runtime`, which every installer carries:
@@ -519,7 +535,7 @@ package_create()
 
 # Create targets
 package_add_library(awesome src/awesome.cpp)
-package_add_executable(awesome_app src/main.cpp
+package_add_executable(awesome_app WIN32 src/main.cpp
     ICON                 resources/awesome_app.ico
     LINUX_DESKTOP_FILE   resources/awesome_app.desktop
     LINUX_ICON_THEME_DIR resources/icons)
@@ -600,6 +616,11 @@ From 2.0.0 on, every breaking change bumps the major version, so a pin to any 2.
 to a later 2.x without changes to the consuming project. The installed
 `PackageBuilderConfigVersion.cmake` uses `SameMajorVersion` to the same effect:
 `find_package(PackageBuilder 2)` accepts any 2.x and no 1.x.
+
+2.0.3 is a bug fix within that promise: a command-line (console) executable no longer gets a Windows
+Start Menu entry or default desktop shortcut, which only opened a console window, and a
+`DESKTOP_LINKS` entry that names one is dropped with a configure warning (see
+[Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers)).
 
 Before 2.0.0, two minor releases broke existing builds:
 

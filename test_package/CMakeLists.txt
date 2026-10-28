@@ -11,15 +11,18 @@ include(PackageBuilder)
 
 message(STATUS "PackageBuilder module was successfully found and included.")
 
-# A two-executable sample whose component list leaves the game out, so the package carries the
-# tool alone, beside the package's Start Menu links. The package names no PRIMARY_TARGET, so the
-# tool, its only packaged executable, is the primary one. The tool is a command-line tool with no
-# .desktop file, which is no reason to warn on Linux. conanfile.py checks that the configure warns
-# about neither, that the archive holds the tool and the MSVC C++ runtime and not the game, and that
-# the tool's runtime dependencies install in Runtime while the game's stay in Game.
+# A three-executable sample whose component list leaves the game out, so the package carries the
+# GUI app and the command-line tool, beside the package's Start Menu links. The app is the
+# PRIMARY_TARGET, so it names the package and gets the desktop shortcut. The tool has no .desktop
+# file, which is no reason to warn on Linux, and on Windows it is a console executable, so it gets
+# no Start Menu entry or desktop shortcut. conanfile.py checks that the configure warns about
+# neither, that the archive holds the app, the tool and the MSVC C++ runtime and not the game, and
+# that the app's and tool's runtime dependencies install in Runtime while the game's stay in Game.
 package_create(
     VENDOR
     "Test Vendor"
+    PRIMARY_TARGET
+    test_app
     MENU_LINKS
     "bin/guide.html"
     "Test Guide"
@@ -40,6 +43,10 @@ package_add_executable(
 package_add_executable(test_tool main.cpp DISPLAY_NAME "Test Tool" COMPONENT Tool)
 set_target_properties(test_game PROPERTIES OUTPUT_NAME test-game)
 set_target_properties(test_tool PROPERTIES OUTPUT_NAME test-tool)
+package_add_executable(test_app WIN32 main.cpp DISPLAY_NAME "Test App")
+set_target_properties(test_app PROPERTIES OUTPUT_NAME test-app)
+# The GUI subsystem defaults to a WinMain entry; keep the shared plain main() under MSVC.
+target_link_options(test_app PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/ENTRY:mainCRTStartup>)
 
 set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Tool)
 package_install()
@@ -65,12 +72,12 @@ function(_test_package_configuration)
     _test_expect("vendor" "${CPACK_PACKAGE_VENDOR}" "Test Vendor")
     if(WIN32)
         _test_expect("install directory" "${CPACK_PACKAGE_INSTALL_DIRECTORY}"
-                     "Test Vendor\\Test Tool")
-        _test_expect("registry key" "${CPACK_PACKAGE_INSTALL_REGISTRY_KEY}" "Test Tool")
+                     "Test Vendor\\Test App")
+        _test_expect("registry key" "${CPACK_PACKAGE_INSTALL_REGISTRY_KEY}" "Test App")
 
-        # Only the packaged tool gets a Start Menu entry and a desktop shortcut; nothing of the
-        # unlisted game's appears. The package's links join the tool's entry.
-        _test_expect("executables" "${CPACK_PACKAGE_EXECUTABLES}" "test-tool;Test Tool")
+        # Only the GUI app gets a Start Menu entry: the console tool gets none, and nothing of the
+        # unlisted game's appears. The package's links join the app's entry.
+        _test_expect("executables" "${CPACK_PACKAGE_EXECUTABLES}" "test-app;Test App")
         _test_expect("menu links" "${CPACK_NSIS_MENU_LINKS}"
                      "bin/guide.html;Test Guide;https://example.com/tool;Test Tool Website")
 
@@ -81,14 +88,15 @@ function(_test_package_configuration)
                                 "${CPACK_NSIS_DELETE_ICONS_EXTRA}")
         endif()
 
+        # The primary GUI app gets the desktop shortcut; neither the tool nor the game gets one.
         set(_shortcuts "${CPACK_NSIS_CREATE_ICONS_EXTRA}")
-        string(FIND "${_shortcuts}" "$DESKTOP\\Test Tool.lnk" _found)
+        string(FIND "${_shortcuts}" "$DESKTOP\\Test App.lnk" _found)
         if(_found EQUAL -1)
-            message(FATAL_ERROR "the tool has no desktop shortcut:\n${_shortcuts}")
+            message(FATAL_ERROR "the app has no desktop shortcut:\n${_shortcuts}")
         endif()
         string(TOLOWER "${_shortcuts}" _shortcuts_lower)
-        if(_shortcuts_lower MATCHES "game")
-            message(FATAL_ERROR "shortcuts name the unlisted game:\n${_shortcuts}")
+        if(_shortcuts_lower MATCHES "test tool|game")
+            message(FATAL_ERROR "shortcuts name the tool or the unlisted game:\n${_shortcuts}")
         endif()
     endif()
 endfunction()

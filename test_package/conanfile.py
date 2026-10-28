@@ -20,8 +20,8 @@ class CMakePackageBuilderTestConan(ConanFile):
         cmake_layout(self)
 
     def build(self):
-        # The sample's only packaged executable is its primary one, so the configure must not warn
-        # that the package lacks a PRIMARY_TARGET; nor, on Linux, that the command-line tool has no
+        # The sample names the GUI app as its PRIMARY_TARGET, so the configure must not warn that
+        # the package lacks one; nor, on Linux, that the app or the command-line tool has no
         # .desktop file. CMake writes warnings to stderr, which is captured to check and then
         # passed through.
         cmake = CMake(self)
@@ -35,8 +35,8 @@ class CMakePackageBuilderTestConan(ConanFile):
         cmake.build()
 
     # The configure checks the package configuration; this checks the archive CPack stages from
-    # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed tool and not the unlisted game,
-    # and with a dynamically linked MSVC runtime, that runtime beside the tool.
+    # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed app and tool and not the
+    # unlisted game, and with a dynamically linked MSVC runtime, that runtime beside them.
     def test(self):
         self.run(f"cpack -G ZIP -C {self.settings.build_type}", cwd=self.build_folder)
         archives = list(Path(self.build_folder).glob("*.zip"))
@@ -48,6 +48,8 @@ class CMakePackageBuilderTestConan(ConanFile):
             names = archive.namelist()
         if not any(re.search(r"bin/test-tool(\.exe)?$", name) for name in names):
             raise ConanException(f"The archive lacks the listed tool: {names}")
+        if not any(re.search(r"bin/test-app(\.exe)?$", name) for name in names):
+            raise ConanException(f"The archive lacks the listed app: {names}")
         if any("test-game" in name for name in names):
             raise ConanException(f"The archive holds the unlisted game: {names}")
         if (
@@ -58,10 +60,10 @@ class CMakePackageBuilderTestConan(ConanFile):
                 if not any(name.endswith(f"bin/{runtime}") for name in names):
                     raise ConanException(f"The archive lacks the C++ runtime's {runtime}: {names}")
 
-        # Neither executable links a library the resolver keeps, so the archive cannot show where
-        # their dependencies go; the install script names the component of each dependency rule.
-        # Each top-level block of it is one rule, guarded by the component it belongs to. The
-        # listed tool's dependencies go to Runtime, and the unlisted game's stay in Game.
+        # No executable links a library the resolver keeps, so the archive cannot show where their
+        # dependencies go; the install script names the component of each dependency rule. Each
+        # top-level block of it is one rule, guarded by the component it belongs to. The listed
+        # app's and tool's dependencies go to Runtime, and the unlisted game's stay in Game.
         script = (Path(self.build_folder) / "cmake_install.cmake").read_text()
         rules = re.split(r'^if\(CMAKE_INSTALL_COMPONENT STREQUAL "', script, flags=re.MULTILINE)
         dependency_components = {
@@ -70,9 +72,13 @@ class CMakePackageBuilderTestConan(ConanFile):
                 for rule in rules[1:]
                 if "GET_RUNTIME_DEPENDENCIES" in rule and executable in rule
             }
-            for executable in ("test-game", "test-tool")
+            for executable in ("test-app", "test-game", "test-tool")
         }
-        if dependency_components != {"test-game": {"Game"}, "test-tool": {"Runtime"}}:
+        if dependency_components != {
+            "test-app": {"Runtime"},
+            "test-game": {"Game"},
+            "test-tool": {"Runtime"},
+        }:
             raise ConanException(
                 f"Dependency rules are in the wrong components: {dependency_components}"
             )

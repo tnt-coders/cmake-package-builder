@@ -135,11 +135,11 @@ endfunction()
 # initialized. Accepts optional package-level metadata: PRIMARY_TARGET designates the executable
 # that represents the package's Windows identity (display name, installer icon, ARP icon);
 # DISPLAY_NAME overrides the package name derived from PRIMARY_TARGET; ICON overrides the
-# installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts; MENU_LINKS
-# adds Windows Start Menu links as <path> <label> pairs, the path relative to the install directory
-# or a URL; VERSION overrides the package version, which defaults to PROJECT_VERSION, with that
-# version plus a SemVer pre-release or build suffix (1.0.0-alpha); VENDOR names the publisher, which
-# also becomes the parent folder of the Windows install directory.
+# installer/ARP icon; DESKTOP_LINKS controls which GUI executables receive desktop shortcuts;
+# MENU_LINKS adds Windows Start Menu links as <path> <label> pairs, the path relative to the install
+# directory or a URL; VERSION overrides the package version, which defaults to PROJECT_VERSION, with
+# that version plus a SemVer pre-release or build suffix (1.0.0-alpha); VENDOR names the publisher,
+# which also becomes the parent folder of the Windows install directory.
 function(package_create)
     cmake_parse_arguments(
         PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION;VENDOR"
@@ -300,9 +300,9 @@ endfunction()
 # Creates and registers an executable target using PackageBuilder's conventional private include
 # defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE,
 # LINUX_ICON_THEME_DIR, and COMPONENT as packaging metadata; all other arguments are forwarded to
-# add_executable() as sources. On Windows, PackageBuilder also compiles in the target's resource
-# script (package_write_resource_script()): its version information and, when ICON is provided, that
-# icon.
+# add_executable(): the sources, and WIN32 for a GUI executable. On Windows, PackageBuilder also
+# compiles in the target's resource script (package_write_resource_script()): its version
+# information and, when ICON is provided, that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
@@ -799,13 +799,29 @@ function(package_install)
         endif()
 
         # -------------------------------------------------------------------
-        # Build the Start Menu: CPACK_PACKAGE_EXECUTABLES gives each packaged executable an entry
-        # (label = DISPLAY_NAME), and CPACK_NSIS_MENU_LINKS carries the package's MENU_LINKS beside
-        # them. The uninstaller removes both. package_create(MENU_LINKS) is the one source of the
-        # links, so a value the caller set itself would be dropped silently; it is an error instead.
+        # Collect the packaged GUI executables, the only ones that get shortcuts. An executable
+        # whose WIN32_EXECUTABLE is not true is a command-line tool: a shortcut would only open a
+        # console window, so it gets none, as on Linux an executable without a .desktop file gets no
+        # launcher entry. A generator expression cannot be evaluated here and
+        # counts as true, the usual one keeping a console for Debug builds alone.
+        # -------------------------------------------------------------------
+        set(_gui_exe_targets)
+        foreach(rt_target IN LISTS _exe_targets)
+            get_target_property(_win32_executable ${rt_target} WIN32_EXECUTABLE)
+            if(_win32_executable)
+                list(APPEND _gui_exe_targets ${rt_target})
+            endif()
+        endforeach()
+
+        # -------------------------------------------------------------------
+        # Build the Start Menu: CPACK_PACKAGE_EXECUTABLES gives each packaged GUI executable an
+        # entry (label = DISPLAY_NAME), and CPACK_NSIS_MENU_LINKS carries the package's MENU_LINKS
+        # beside them. The uninstaller removes both. package_create(MENU_LINKS) is the one source of
+        # the links, so a value the caller set itself would be dropped silently; it is an error
+        # instead.
         # -------------------------------------------------------------------
         set(_cpack_executables)
-        foreach(rt_target IN LISTS _exe_targets)
+        foreach(rt_target IN LISTS _gui_exe_targets)
             _package_get_output_name(_output_name ${rt_target})
             _package_get_shortcut_label(_label ${rt_target})
             list(APPEND _cpack_executables "${_output_name}" "${_label}")
@@ -821,11 +837,13 @@ function(package_install)
 
         # -------------------------------------------------------------------
         # Resolve desktop shortcut targets:
-        # DESKTOP_LINKS not set  → primary target only (if resolved)
+        # DESKTOP_LINKS not set  → primary target only (if resolved and a GUI executable)
         # DESKTOP_LINKS empty    → no shortcuts
-        # DESKTOP_LINKS <list>   → those targets whose component is listed
+        # DESKTOP_LINKS <list>   → those targets whose component is listed; a listed command-line
+        #                          tool gets none and draws a warning, since dropping it silently
+        #                          would hide the change from a project that listed it
         # -------------------------------------------------------------------
-        if(NOT _desktop_links_defined AND _primary_target)
+        if(NOT _desktop_links_defined AND _primary_target IN_LIST _gui_exe_targets)
             set(_desktop_link_targets "${_primary_target}")
         endif()
         set(_cpack_desktop_links)
@@ -833,6 +851,14 @@ function(package_install)
         foreach(_link_target IN LISTS _desktop_link_targets)
             get_target_property(_link_component ${_link_target} PACKAGE_BUILDER_COMPONENT)
             if(NOT _link_component IN_LIST CPACK_COMPONENTS_ALL)
+                continue()
+            endif()
+            if(NOT _link_target IN_LIST _gui_exe_targets)
+                message(
+                    WARNING "PackageBuilder: DESKTOP_LINKS names '${_link_target}', which is a "
+                            "command-line tool (its WIN32_EXECUTABLE is not true), so it gets no "
+                            "desktop shortcut: one would only open a console window. Drop it from "
+                            "DESKTOP_LINKS, or build it WIN32 if it is a GUI program.")
                 continue()
             endif()
             _package_get_output_name(_output_name ${_link_target})
@@ -847,23 +873,18 @@ function(package_install)
         # Classic:   CPACK_CREATE_DESKTOP_LINKS drives the checkbox flow; .lnk names come from
         #            CPACK_PACKAGE_EXECUTABLES automatically.
         # -------------------------------------------------------------------
-        if(_cpack_executables)
-            set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
-            if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-                string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
-                set(_nsis_create_icons "")
-                set(_nsis_delete_icons "")
-                foreach(_exe_name _label IN ZIP_LISTS _cpack_desktop_links
-                                  _cpack_desktop_link_labels)
-                    string(APPEND _nsis_create_icons "CreateShortCut \"$DESKTOP\\${_label}.lnk\""
-                           " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
-                    string(APPEND _nsis_delete_icons "Delete \"$DESKTOP\\${_label}.lnk\"\n  ")
-                endforeach()
-                string(APPEND CPACK_NSIS_CREATE_ICONS_EXTRA "${_nsis_create_icons}")
-                string(APPEND CPACK_NSIS_DELETE_ICONS_EXTRA "${_nsis_delete_icons}")
-            else()
-                set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
-            endif()
+        set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
+        if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
+            foreach(_exe_name _label IN ZIP_LISTS _cpack_desktop_links _cpack_desktop_link_labels)
+                string(APPEND CPACK_NSIS_CREATE_ICONS_EXTRA
+                       "CreateShortCut \"$DESKTOP\\${_label}.lnk\""
+                       " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
+                string(APPEND CPACK_NSIS_DELETE_ICONS_EXTRA
+                       "Delete \"$DESKTOP\\${_label}.lnk\"\n  ")
+            endforeach()
+        else()
+            set(CPACK_CREATE_DESKTOP_LINKS ${_cpack_desktop_links})
         endif()
 
         # -------------------------------------------------------------------
