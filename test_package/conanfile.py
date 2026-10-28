@@ -1,4 +1,11 @@
+import re
+import sys
+import zipfile
+from io import StringIO
+from pathlib import Path
+
 from conan import ConanFile
+from conan.errors import ConanException
 from conan.tools.cmake import CMake, cmake_layout
 
 
@@ -13,9 +20,29 @@ class CMakePackageBuilderTestConan(ConanFile):
         cmake_layout(self)
 
     def build(self):
+        # The sample's only packaged executable is its primary one, so the configure must not warn
+        # that the package lacks a PRIMARY_TARGET. CMake writes warnings to stderr, which is
+        # captured to check and then passed through.
         cmake = CMake(self)
-        cmake.configure()
+        stderr = StringIO()
+        cmake.configure(stderr=stderr)
+        sys.stderr.write(stderr.getvalue())
+        if "PRIMARY_TARGET is not set" in stderr.getvalue():
+            raise ConanException("The configure warned that the package lacks a PRIMARY_TARGET.")
+        cmake.build()
 
-    # Verification happens during the "cmake.configure()" step
+    # The configure checks the package configuration; this checks the archive CPack stages from
+    # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed tool and not the unlisted game.
     def test(self):
-        pass
+        self.run(f"cpack -G ZIP -C {self.settings.build_type}", cwd=self.build_folder)
+        archives = list(Path(self.build_folder).glob("*.zip"))
+        if len(archives) != 1 or not re.fullmatch(
+            r"PackageBuilderTest-1\.0\.0-[a-z]+-[a-z0-9_]+\.zip", archives[0].name
+        ):
+            raise ConanException(f"Expected one PackageBuilderTest archive, found {archives}.")
+        with zipfile.ZipFile(archives[0]) as archive:
+            names = archive.namelist()
+        if not any(re.search(r"bin/test-tool(\.exe)?$", name) for name in names):
+            raise ConanException(f"The archive lacks the listed tool: {names}")
+        if any("test-game" in name for name in names):
+            raise ConanException(f"The archive holds the unlisted game: {names}")

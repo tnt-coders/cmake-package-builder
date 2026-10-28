@@ -114,6 +114,25 @@ This function performs essential validation before any targets are defined:
 - **Description verification:** Verifies that `PROJECT_DESCRIPTION` is set and fails with a fatal error if it is not. Set via the `DESCRIPTION` argument in the `project()` command.
 - **License verification:** Verifies that a `LICENSE` file exists at the project root. This is required for CPack packaging.
 
+It also takes the package's identity, all optional:
+
+| Argument | Description |
+|----------|-------------|
+| `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, and the parent folder of the Windows install directory. Without it, CPack's default vendor applies and the install directory has no parent folder. |
+| `DISPLAY_NAME` | The package's name on Windows: the installer title, the *Apps & features* entry, the Start Menu folder, the install directory and the registry key. Defaults to the `PRIMARY_TARGET`'s display name, then `PROJECT_NAME`. |
+| `ICON` | The installer, uninstaller and *Apps & features* icon. Defaults to the `PRIMARY_TARGET`'s icon. |
+| `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default. It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
+| `DESKTOP_LINKS` | See [Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers). |
+| `VERSION` | See above. |
+
+The Windows install directory is `<VENDOR>\<DISPLAY_NAME>` under Program Files and the registry key is `<DISPLAY_NAME>`. Neither carries the version, so a new version installs over the last one rather than beside it:
+
+```cmake
+# Installs to "Program Files\My Company\My Suite"
+package_create(VENDOR "My Company" DISPLAY_NAME "My Suite" ICON resources/my_suite.ico
+               PRIMARY_TARGET my_app)
+```
+
 ### Add Targets
 
 ```cmake
@@ -153,6 +172,8 @@ a build-time convenience only and is not exported to consumers.
 | `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable and also uses it as the NSIS installer/uninstaller icon. Changing the icon re-runs CMake; that is how the compiled resource learns of it. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
+| `COMPONENT`            | The install component that carries the executable, its runtime dependencies, and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
+| `MENU_LINKS`           | Extra Windows Start Menu links that ship with the executable: `<path> <label>` pairs, where `<path>` is relative to the install directory or is a URL. |
 
 All other arguments after the target name are forwarded to `add_executable()` as source files.
 
@@ -199,9 +220,10 @@ target_include_directories(
 package_register_target(my_lib PUBLIC_HEADER_DIRS include)
 ```
 
-`package_register_target` accepts the same `ICON`, `LINUX_DESKTOP_FILE`, and
-`LINUX_ICON_THEME_DIR` arguments as
-`package_add_executable`. For externally created targets, `ICON` is packaging metadata only; it is
+`package_register_target` accepts the same `DISPLAY_NAME`, `ICON`, `LINUX_DESKTOP_FILE`,
+`LINUX_ICON_THEME_DIR`, `COMPONENT`, and `MENU_LINKS` arguments as `package_add_executable`;
+`COMPONENT` applies to targets with runtime artifacts only, and `MENU_LINKS` to executables only.
+For externally created targets, `ICON` is packaging metadata only; it is
 used for the NSIS installer/uninstaller icon on Windows, but it does not modify the executable's
 own resources. `package_register_target` does not create the target, add sources, add include
 directories, or create a namespaced build-tree alias. Those details remain the responsibility of
@@ -254,20 +276,49 @@ PackageBuilder assigns every install artifact to one of two CPack components:
 | `Runtime` | Executables, macOS app bundles, shared libraries, and their runtime dependencies |
 | `Development` | Static libraries, public headers, CMake package metadata (exported targets, config/version files, custom modules) |
 
+A runtime target registered with `COMPONENT <name>` goes to that component instead of `Runtime`,
+together with its runtime dependencies and its Linux `.desktop` file and icons. Registration records
+every runtime target's component, `Runtime` included, as its `PACKAGE_BUILDER_COMPONENT` property,
+so a project's own install rules for files that belong to one executable can read it rather than
+restate it:
+
+```cmake
+package_add_executable(my_game main.cpp DISPLAY_NAME "My Game" COMPONENT Game)
+
+get_target_property(_game_component my_game PACKAGE_BUILDER_COMPONENT)
+install(DIRECTORY levels/ DESTINATION ${CMAKE_INSTALL_BINDIR}/levels COMPONENT ${_game_component})
+```
+
+`PACKAGE_BUILDER_CPACK_COMPONENTS` lists the components the generated packages carry. Every
+generator honours it: the ZIP and DEB generators run in component mode with all listed components
+grouped into one package, so each still produces one file named `<PROJECT_NAME>-<version>-<os>-<arch>`.
+A component left off the list ships in no package, while its targets still build and its install
+rules still run for `cmake --install`. On Windows, an executable whose component is not listed gets
+no Start Menu entry, desktop shortcut or menu link, and cannot be the `PRIMARY_TARGET`.
+
 ### Runtime-only installers
 
-By default, generated installers include only the **Runtime** component: executables, app bundles,
-and shared libraries. Development-facing artifacts such as static libraries, public headers, exported
-CMake target definitions, and package config files are excluded because
-[Conan](https://conan.io/) is the preferred method for consuming packages as libraries during
-development.
+By default, `PACKAGE_BUILDER_CPACK_COMPONENTS` is `Runtime` plus every component a target was
+registered with, so the generated installers carry executables, app bundles, and shared libraries.
+Development-facing artifacts such as static libraries, public headers, exported CMake target
+definitions, and package config files are excluded because [Conan](https://conan.io/) is the
+preferred method for consuming packages as libraries during development.
+
+To leave a finished-but-unreleased application out of every package, set the list without its
+component before calling `package_install()`:
+
+```cmake
+# my_game (COMPONENT Game) keeps building and testing, but ships in no package until listed
+set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Tool)
+package_install()
+```
 
 ### Desktop shortcuts and launchers
 
-Every registered executable gets a Start Menu entry (Windows) and an XDG `.desktop` launcher entry
+Every packaged executable gets a Start Menu entry (Windows) and an XDG `.desktop` launcher entry
 (Linux). Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by default; pass
 `DESKTOP_LINKS` to `package_create()` to choose the targets that receive one, or an empty list for
-none:
+none. Targets in `DESKTOP_LINKS` whose component is not listed get none:
 
 ```cmake
 # Both apps get a desktop shortcut
@@ -276,7 +327,7 @@ package_create(PRIMARY_TARGET my_app DESKTOP_LINKS my_app my_tool)
 
 | Platform | Behavior |
 |----------|----------|
-| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. The NSIS installer icon is taken from the first registered executable that provides `ICON`. |
+| Windows  | See [Windows one-click installer](#windows-one-click-installer) below for desktop shortcut behavior. An executable's `MENU_LINKS` add Start Menu links that ship with it. The NSIS installer icon is the package's `ICON`, else the `PRIMARY_TARGET`'s. |
 | Linux    | Installs the `.desktop` file provided via `LINUX_DESKTOP_FILE` to `share/applications`, and installs the icon theme tree provided via `LINUX_ICON_THEME_DIR` to `share/icons`. If `LINUX_DESKTOP_FILE` is omitted, PackageBuilder falls back to looking for a `<target>.desktop` file in the same directory as the target's `CMakeLists.txt`. |
 | macOS    | No action needed — DragNDrop bundles are self-contained and Launchpad discovers them automatically when dragged to `/Applications`. |
 
@@ -323,7 +374,7 @@ PackageBuilder's lookup order for `NSIS.template.in` (highest to lowest priority
 
 ### Including development components
 
-If your project needs installers that also ship development files, set `PACKAGE_BUILDER_CPACK_COMPONENTS` before calling `package_install()`:
+If your project needs installers that also ship development files, set `PACKAGE_BUILDER_CPACK_COMPONENTS` before calling `package_install()`. Setting it replaces the default list, so name every component the packages should carry:
 
 ```cmake
 set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Development)

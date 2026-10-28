@@ -7,6 +7,7 @@
 ;   - AutoCloseWindow closes the installer automatically when done.
 ;   - The start menu folder defaults to the display name; no user prompt.
 ;   - Desktop shortcuts are handled unconditionally via CPACK_NSIS_CREATE_ICONS_EXTRA.
+;   - The uninstaller also removes an empty vendor directory above the install directory.
 
 ;--------------------------------
 ; You must define these values
@@ -789,6 +790,14 @@ Section "Uninstall"
 
   ;Remove the installation directory if it is empty.
   RMDir "$INSTDIR"
+
+  ;Remove the vendor directory above it if it is empty too, which it is once the vendor's last
+  ;product is uninstalled. The install directory carries a vendor segment exactly when it has a
+  ;parent segment.
+  !searchparse /noerrors "@CPACK_PACKAGE_INSTALL_DIRECTORY@" "\" INSTALL_DIRECTORY_LEAF
+  !ifdef INSTALL_DIRECTORY_LEAF
+    RMDir "$INSTDIR\.."
+  !endif
 
   ; Remove the registry entries.
   DeleteRegKey SHCTX "Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@"

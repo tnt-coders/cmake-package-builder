@@ -27,15 +27,44 @@ function(_package_make_paths_absolute out_var)
 endfunction()
 
 # Records an existing target for install/export handling and optionally tracks public header roots
-# for header installation. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and LINUX_ICON_THEME_DIR
-# to store per-target packaging metadata. This helper must not mutate target build settings.
+# for header installation. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, LINUX_ICON_THEME_DIR,
+# COMPONENT, and MENU_LINKS to store per-target packaging metadata. This helper must not mutate
+# target build settings.
 function(_package_register_target_impl target)
     cmake_parse_arguments(
         PARSE_ARGV 1 PACKAGE_REGISTER ""
-        "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "PUBLIC_HEADER_DIRS")
+        "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR;COMPONENT"
+        "PUBLIC_HEADER_DIRS;MENU_LINKS")
 
     if(NOT TARGET ${target})
         message(FATAL_ERROR "Target '${target}' does not exist and cannot be registered.")
+    endif()
+
+    # Every runtime target records its install component, Runtime unless COMPONENT names another,
+    # so the consumer's own install rules can read it rather than restate it.
+    _package_collect_runtime_targets(_runtime_target ${target})
+    if(_runtime_target)
+        if(NOT PACKAGE_REGISTER_COMPONENT)
+            set(PACKAGE_REGISTER_COMPONENT Runtime)
+        endif()
+        set_target_properties(${target} PROPERTIES PACKAGE_BUILDER_COMPONENT
+                                                   "${PACKAGE_REGISTER_COMPONENT}")
+    elseif(PACKAGE_REGISTER_COMPONENT)
+        message(FATAL_ERROR "Target '${target}' installs no runtime artifacts, "
+                            "so it cannot take a COMPONENT.")
+    endif()
+
+    # Start Menu links belong to an executable: they are written only when it is packaged.
+    if(PACKAGE_REGISTER_MENU_LINKS)
+        get_target_property(_target_type ${target} TYPE)
+        if(NOT _target_type STREQUAL "EXECUTABLE")
+            message(FATAL_ERROR "Target '${target}' is not an executable, "
+                                "so it cannot take MENU_LINKS.")
+        endif()
+        set_property(
+            TARGET ${target}
+            APPEND
+            PROPERTY PACKAGE_BUILDER_MENU_LINKS ${PACKAGE_REGISTER_MENU_LINKS})
     endif()
 
     # External targets may already be fully configured, so registration only records packaging
@@ -122,10 +151,15 @@ endfunction()
 # DISPLAY_NAME overrides the package name derived from PRIMARY_TARGET; ICON overrides the
 # installer/ARP icon; DESKTOP_LINKS controls which targets receive desktop shortcuts; VERSION
 # overrides the package version, which defaults to PROJECT_VERSION, with that version plus a SemVer
-# pre-release or build suffix (1.0.0-alpha).
+# pre-release or build suffix (1.0.0-alpha); VENDOR names the publisher, which also becomes the
+# parent folder of the Windows install directory.
 function(package_create)
-    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE "" "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION"
-                          "DESKTOP_LINKS")
+    cmake_parse_arguments(PARSE_ARGV 0 PACKAGE_CREATE ""
+                          "PRIMARY_TARGET;DISPLAY_NAME;ICON;VERSION;VENDOR" "DESKTOP_LINKS")
+
+    if(PACKAGE_CREATE_VENDOR)
+        set_property(GLOBAL PROPERTY PACKAGE_BUILDER_VENDOR "${PACKAGE_CREATE_VENDOR}")
+    endif()
 
     if(PACKAGE_CREATE_PRIMARY_TARGET)
         set_property(GLOBAL PROPERTY PACKAGE_BUILDER_PRIMARY_TARGET
@@ -266,15 +300,16 @@ function(package_write_resource_script out_var target)
 endfunction()
 
 # Creates and registers an executable target using PackageBuilder's conventional private include
-# defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE, and
-# LINUX_ICON_THEME_DIR as packaging metadata; all other arguments are forwarded to add_executable()
-# as sources. On Windows, PackageBuilder also compiles in the target's resource script
-# (package_write_resource_script()): its version information and, when ICON is provided, that icon.
+# defaults for application-style layouts. Accepts DISPLAY_NAME, ICON, LINUX_DESKTOP_FILE,
+# LINUX_ICON_THEME_DIR, COMPONENT, and MENU_LINKS as packaging metadata; all other arguments are
+# forwarded to add_executable() as sources. On Windows, PackageBuilder also compiles in the target's
+# resource script (package_write_resource_script()): its version information and, when ICON is
+# provided, that icon.
 function(package_add_executable target)
     _package_check_initialized()
 
-    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC ""
-                          "DISPLAY_NAME;ICON;LINUX_DESKTOP_FILE;LINUX_ICON_THEME_DIR" "")
+    set(_one_value_keywords DISPLAY_NAME ICON LINUX_DESKTOP_FILE LINUX_ICON_THEME_DIR COMPONENT)
+    cmake_parse_arguments(PARSE_ARGV 1 PACKAGE_EXEC "" "${_one_value_keywords}" "MENU_LINKS")
 
     add_executable(${target} ${PACKAGE_EXEC_UNPARSED_ARGUMENTS})
 
@@ -285,18 +320,11 @@ function(package_add_executable target)
                           ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     set(_register_args)
-    if(PACKAGE_EXEC_DISPLAY_NAME)
-        list(APPEND _register_args DISPLAY_NAME "${PACKAGE_EXEC_DISPLAY_NAME}")
-    endif()
-    if(PACKAGE_EXEC_ICON)
-        list(APPEND _register_args ICON "${PACKAGE_EXEC_ICON}")
-    endif()
-    if(PACKAGE_EXEC_LINUX_DESKTOP_FILE)
-        list(APPEND _register_args LINUX_DESKTOP_FILE "${PACKAGE_EXEC_LINUX_DESKTOP_FILE}")
-    endif()
-    if(PACKAGE_EXEC_LINUX_ICON_THEME_DIR)
-        list(APPEND _register_args LINUX_ICON_THEME_DIR "${PACKAGE_EXEC_LINUX_ICON_THEME_DIR}")
-    endif()
+    foreach(_keyword ${_one_value_keywords} MENU_LINKS)
+        if(PACKAGE_EXEC_${_keyword})
+            list(APPEND _register_args ${_keyword} ${PACKAGE_EXEC_${_keyword}})
+        endif()
+    endforeach()
 
     _package_register_target_impl(${target} ${_register_args})
 
@@ -334,19 +362,23 @@ endfunction()
 #
 # HOW CPack COMPONENTS WORK
 # --------------------------
-# CPack uses "components" to categorize install() rules. When you run `cpack`, it inspects
-# CPACK_COMPONENTS_ALL to decide which install() rules to include in the package. Rules that belong
-# to a component not listed in CPACK_COMPONENTS_ALL are silently excluded.
+# CPack uses "components" to categorize install() rules. CPACK_COMPONENTS_ALL lists the components
+# a package carries. NSIS honours that list on its own; the archive and DEB generators honour it
+# only in component mode, and install every rule otherwise, so package_install() switches them to
+# component mode with all listed components grouped into one package. Rules that belong to a
+# component not listed are then excluded from every generated package.
 #
 # PackageBuilder defines two components. The Runtime component holds executables, macOS app bundles,
 # shared libraries, and their transitive runtime dependencies — everything an end user needs to run
 # the application. The Development component holds static libraries, public headers, CMake exported
 # target definitions, and generated package config files — everything needed to compile against this
-# project as a library.
+# project as a library. A runtime target registered with COMPONENT <name> puts its runtime artifacts,
+# their dependencies, and its Linux launcher entry in that component instead of Runtime.
 #
-# By default, CPACK_COMPONENTS_ALL is set to "Runtime" so generated installers ship only what end
-# users need. To also ship development files, set PACKAGE_BUILDER_CPACK_COMPONENTS to "Runtime
-# Development" before calling package_install().
+# By default, CPACK_COMPONENTS_ALL is Runtime plus every registered COMPONENT, so generated
+# installers ship what end users need. To choose the list, set PACKAGE_BUILDER_CPACK_COMPONENTS
+# before calling package_install(): "Runtime Development" also ships development files, and leaving
+# a COMPONENT out keeps that target's files out of every package while it still builds.
 function(package_install)
     _package_check_initialized()
 
@@ -435,23 +467,25 @@ function(package_install)
                 #
                 # Archive files (ARCHIVE) go to Development since they are only needed at link time.
                 # App bundles (BUNDLE), shared library binaries (LIBRARY), and other executables
-                # (RUNTIME) go to Runtime. Shared library version symlinks (NAMELINK) go to
-                # Development since only the compiler needs them.
+                # (RUNTIME) go to the target's component, Runtime unless it was registered with
+                # COMPONENT. Shared library version symlinks (NAMELINK) go to Development since only
+                # the compiler needs them.
                 # -----------------------------------------------------------
                 set(_dep_set "${PROJECT_NAME}_${rt_target}_RuntimeDeps")
+                get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
 
                 install(
                     TARGETS ${rt_target} RUNTIME_DEPENDENCY_SET ${_dep_set}
                     EXPORT ${PROJECT_NAME}Targets
                     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Development
-                    BUNDLE DESTINATION . COMPONENT Runtime
+                    BUNDLE DESTINATION . COMPONENT ${_component}
                     INCLUDES
                     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
                     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                            COMPONENT Runtime
+                            COMPONENT ${_component}
                             NAMELINK_COMPONENT Development
-                    RESOURCE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
-                    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+                    RESOURCE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT ${_component}
+                    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT ${_component})
 
                 # -----------------------------------------------------------
                 # Group C: Per-runtime-target dependency set install.
@@ -459,7 +493,8 @@ function(package_install)
                 # Each RUNTIME_DEPENDENCY_SET declared in Group B must have a matching
                 # install(RUNTIME_DEPENDENCY_SET ...) call. CMake resolves the transitive shared
                 # library dependencies of the target at install time and copies them to DESTINATION,
-                # applying the exclude filters to skip system-provided libraries.
+                # applying the exclude filters to skip system-provided libraries. The dependencies
+                # ship with the target, so they share its component.
                 # -----------------------------------------------------------
                 install(
                     RUNTIME_DEPENDENCY_SET
@@ -467,7 +502,7 @@ function(package_install)
                     DESTINATION
                     ${CMAKE_INSTALL_BINDIR}
                     COMPONENT
-                    Runtime
+                    ${_component}
                     PRE_EXCLUDE_REGEXES
                     ${_pre_exclude_regexes}
                     POST_EXCLUDE_REGEXES
@@ -552,7 +587,11 @@ function(package_install)
     # COMPONENT is listed in CPACK_COMPONENTS_ALL are included in the generated package.
     # -------------------------------------------------------------------
     get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
+    get_property(_vendor GLOBAL PROPERTY PACKAGE_BUILDER_VENDOR)
     set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
+    if(_vendor)
+        set(CPACK_PACKAGE_VENDOR "${_vendor}")
+    endif()
     set(CPACK_PACKAGE_VERSION "${_package_version}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
     set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
@@ -581,13 +620,28 @@ function(package_install)
     # CPACK_COMPONENTS_ALL tells CPack which component buckets to include in the generated
     # installer. Only install() rules tagged with one of these components will be packaged.
     #
-    # Default: Runtime only — release installers ship app executables and shared libraries but not
-    # headers, static libs, or CMake package metadata. Set PACKAGE_BUILDER_CPACK_COMPONENTS to
-    # "Runtime Development" before calling package_install() to include both.
+    # Default: Runtime plus every registered COMPONENT — release installers ship app executables
+    # and shared libraries but not headers, static libs, or CMake package metadata. Set
+    # PACKAGE_BUILDER_CPACK_COMPONENTS before calling package_install() to choose the list.
     if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS)
         set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime)
+        foreach(rt_target IN LISTS runtime_targets)
+            get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
+            list(APPEND PACKAGE_BUILDER_CPACK_COMPONENTS ${_component})
+        endforeach()
+        list(REMOVE_DUPLICATES PACKAGE_BUILDER_CPACK_COMPONENTS)
     endif()
     set(CPACK_COMPONENTS_ALL ${PACKAGE_BUILDER_CPACK_COMPONENTS})
+
+    # The archive and DEB generators install every component unless they run in component mode;
+    # grouping all listed components into one package keeps one package per generator, named
+    # CPACK_PACKAGE_FILE_NAME as before. The project configuration file keeps the archives' top-level
+    # directory, which component mode would drop.
+    set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
+    set(CPACK_DEB_COMPONENT_INSTALL ON)
+    set(CPACK_COMPONENTS_GROUPING ALL_COMPONENTS_IN_ONE)
+    set(CPACK_PROJECT_CONFIG_FILE
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PackageBuilderCPackOptions.cmake")
 
     get_property(_desktop_links_defined GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS_DEFINED)
     get_property(_desktop_link_targets GLOBAL PROPERTY PACKAGE_BUILDER_DESKTOP_LINKS)
@@ -610,22 +664,31 @@ function(package_install)
         endif()
 
         # -------------------------------------------------------------------
-        # Collect packaged executables
+        # Collect packaged executables: those whose component is listed. An unlisted executable
+        # ships in no package, so it takes no part in the package's identity or shortcuts.
         # -------------------------------------------------------------------
         set(_exe_targets)
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
-            if(_target_type STREQUAL "EXECUTABLE")
+            get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
+            if(_target_type STREQUAL "EXECUTABLE" AND _component IN_LIST CPACK_COMPONENTS_ALL)
                 list(APPEND _exe_targets ${rt_target})
             endif()
         endforeach()
 
         # -------------------------------------------------------------------
         # Resolve primary executable:
-        # PRIMARY_TARGET is explicit; single-exe packages infer it automatically. Multi-exe
-        # packages without PRIMARY_TARGET emit a warning.
+        # PRIMARY_TARGET is explicit and must be packaged; single-exe packages infer it
+        # automatically. Multi-exe packages without PRIMARY_TARGET emit a warning.
         # -------------------------------------------------------------------
         get_property(_primary_target GLOBAL PROPERTY PACKAGE_BUILDER_PRIMARY_TARGET)
+        if(_primary_target AND NOT _primary_target IN_LIST _exe_targets)
+            message(
+                FATAL_ERROR
+                    "PackageBuilder: PRIMARY_TARGET '${_primary_target}' is not a packaged "
+                    "executable. Register it, and list its component in "
+                    "PACKAGE_BUILDER_CPACK_COMPONENTS when that list is set.")
+        endif()
         if(NOT _primary_target)
             list(LENGTH _exe_targets _exe_count)
             if(_exe_count EQUAL 1)
@@ -653,6 +716,15 @@ function(package_install)
         endif()
         set(CPACK_NSIS_DISPLAY_NAME "${_pkg_display_name}")
         set(CPACK_NSIS_PACKAGE_NAME "${_pkg_display_name}")
+
+        # The install directory ([<vendor>\]<display name>) and registry key (<display name>) carry
+        # no version, so a new version installs over the last one rather than beside it.
+        if(_vendor)
+            set(CPACK_PACKAGE_INSTALL_DIRECTORY "${_vendor}\\${_pkg_display_name}")
+        else()
+            set(CPACK_PACKAGE_INSTALL_DIRECTORY "${_pkg_display_name}")
+        endif()
+        set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "${_pkg_display_name}")
 
         # -------------------------------------------------------------------
         # Resolve installer and ARP icons:
@@ -684,20 +756,33 @@ function(package_install)
         endif()
 
         # -------------------------------------------------------------------
-        # Build CPACK_PACKAGE_EXECUTABLES (all executables, label = DISPLAY_NAME)
+        # Build CPACK_PACKAGE_EXECUTABLES (packaged executables, label = DISPLAY_NAME) and append
+        # each packaged executable's MENU_LINKS (<install-relative path or URL> <label> pairs) to
+        # CPACK_NSIS_MENU_LINKS, after any the caller set itself.
         # -------------------------------------------------------------------
         set(_cpack_executables)
         foreach(rt_target IN LISTS _exe_targets)
             _package_get_output_name(_output_name ${rt_target})
             _package_get_shortcut_label(_label ${rt_target})
             list(APPEND _cpack_executables "${_output_name}" "${_label}")
+
+            get_target_property(_menu_links ${rt_target} PACKAGE_BUILDER_MENU_LINKS)
+            if(_menu_links)
+                list(LENGTH _menu_links _menu_link_count)
+                math(EXPR _menu_link_unpaired "${_menu_link_count} % 2")
+                if(_menu_link_unpaired)
+                    message(FATAL_ERROR "PackageBuilder: MENU_LINKS of '${rt_target}' must be "
+                                        "<path> <label> pairs: ${_menu_links}")
+                endif()
+                list(APPEND CPACK_NSIS_MENU_LINKS ${_menu_links})
+            endif()
         endforeach()
 
         # -------------------------------------------------------------------
         # Resolve desktop shortcut targets:
         # DESKTOP_LINKS not set  → primary target only (if resolved)
         # DESKTOP_LINKS empty    → no shortcuts
-        # DESKTOP_LINKS <list>   → exactly those targets
+        # DESKTOP_LINKS <list>   → those targets whose component is listed
         # -------------------------------------------------------------------
         if(NOT _desktop_links_defined AND _primary_target)
             set(_desktop_link_targets "${_primary_target}")
@@ -705,6 +790,10 @@ function(package_install)
         set(_cpack_desktop_links)
         set(_cpack_desktop_link_labels)
         foreach(_link_target IN LISTS _desktop_link_targets)
+            get_target_property(_link_component ${_link_target} PACKAGE_BUILDER_COMPONENT)
+            if(NOT _link_component IN_LIST CPACK_COMPONENTS_ALL)
+                continue()
+            endif()
             _package_get_output_name(_output_name ${_link_target})
             _package_get_shortcut_label(_label ${_link_target})
             list(APPEND _cpack_desktop_links "${_output_name}")
@@ -751,10 +840,12 @@ function(package_install)
         # never governs. Uses the PACKAGE_BUILDER_LINUX_DESKTOP_FILE target property if set;
         # otherwise falls back to expecting a <target>.desktop file in the same directory as the
         # target's CMakeLists.txt. Linux icon assets are installed from LINUX_ICON_THEME_DIR, which
-        # is expected to contain a hicolor/... tree rooted at that directory.
+        # is expected to contain a hicolor/... tree rooted at that directory. Both ship in the
+        # executable's component, so they are packaged exactly when it is.
         foreach(rt_target IN LISTS runtime_targets)
             get_target_property(_target_type ${rt_target} TYPE)
             if(_target_type STREQUAL "EXECUTABLE")
+                get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
                 get_target_property(_desktop_file ${rt_target} PACKAGE_BUILDER_LINUX_DESKTOP_FILE)
                 if(NOT _desktop_file)
                     get_target_property(_source_dir ${rt_target} SOURCE_DIR)
@@ -764,7 +855,7 @@ function(package_install)
                     install(
                         FILES "${_desktop_file}"
                         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
-                        COMPONENT Runtime)
+                        COMPONENT ${_component})
                 else()
                     message(
                         WARNING
@@ -779,7 +870,7 @@ function(package_install)
                         install(
                             DIRECTORY "${_desktop_icon_dir}/"
                             DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
-                            COMPONENT Runtime
+                            COMPONENT ${_component}
                             FILES_MATCHING
                             PATTERN "*.png"
                             PATTERN "*.svg")
