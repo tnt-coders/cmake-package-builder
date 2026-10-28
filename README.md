@@ -27,14 +27,14 @@ Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/2.0.3") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.0.4") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/2.0.3 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.0.4 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -64,7 +64,7 @@ include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
     GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v2.0.3
+    GIT_TAG v2.0.4
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
@@ -127,7 +127,7 @@ It also takes the package's identity, all optional:
 
 | Argument | Description |
 |----------|-------------|
-| `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, the parent folder of the Windows install directory, and the Debian maintainer unless you name one, so a Linux package with neither fails to build its DEB (see [Packaging Behavior](#packaging-behavior)). Without it, CPack's default vendor applies and the install directory has no parent folder. |
+| `VENDOR` | The publisher: `CPACK_PACKAGE_VENDOR`, the Windows *Publisher* entry, the parent folder of the Windows install directory, and the Debian maintainer unless you name one, so a Linux package with neither fails to build its DEB (see [Packaging Behavior](#packaging-behavior)). Without it, the package names no publisher: the Windows install directory has no parent folder, *Apps & features* shows no publisher, and a DEB needs `CPACK_PACKAGE_CONTACT`. |
 | `DISPLAY_NAME` | The package's name on Windows: the installer title, the *Apps & features* entry, the Start Menu folder, the install directory and the registry key. Defaults to the `PRIMARY_TARGET`'s display name, then `PROJECT_NAME`. |
 | `ICON` | The installer, uninstaller and *Apps & features* icon, installed to `bin` in `Runtime` for the latter. Defaults to the `PRIMARY_TARGET`'s icon. |
 | `PRIMARY_TARGET` | The executable that represents the package when `DISPLAY_NAME` or `ICON` is not given, and that gets the desktop shortcut by default when it is a [GUI executable](#desktop-shortcuts-and-launchers). It must be packaged (see [Install components](#install-components)). A package with one packaged executable infers it. |
@@ -621,6 +621,10 @@ to a later 2.x without changes to the consuming project. The installed
 Start Menu entry or default desktop shortcut, which only opened a console window, and a
 `DESKTOP_LINKS` entry that names one is dropped with a configure warning (see
 [Desktop shortcuts and launchers](#desktop-shortcuts-and-launchers)).
+
+2.0.4 is one too: a package without a `VENDOR` names no publisher, where it showed CPack's default
+"Humanity" as its Windows publisher and registry folder, and the one-click installer no longer
+writes a `Software\<vendor>\<DISPLAY_NAME>` registry key that nothing read.
 
 Before 2.0.0, two minor releases broke existing builds:
 

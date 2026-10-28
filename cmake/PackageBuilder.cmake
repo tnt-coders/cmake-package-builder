@@ -637,9 +637,9 @@ function(package_install)
     get_property(_package_version GLOBAL PROPERTY PACKAGE_BUILDER_VERSION)
     get_property(_vendor GLOBAL PROPERTY PACKAGE_BUILDER_VENDOR)
     set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-    if(_vendor)
-        set(CPACK_PACKAGE_VENDOR "${_vendor}")
-    endif()
+    # Always set, so a package without a VENDOR names no publisher instead of CPack's default
+    # "Humanity": the Windows Publisher entry is skipped when empty.
+    set(CPACK_PACKAGE_VENDOR "${_vendor}")
     set(CPACK_PACKAGE_VERSION "${_package_version}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
     set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")

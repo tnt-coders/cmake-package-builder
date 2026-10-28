@@ -23,10 +23,12 @@ class CMakePackageBuilderTestConan(ConanFile):
         # The sample names the GUI app as its PRIMARY_TARGET, so the configure must not warn that
         # the package lacks one; nor, on Linux, that the app or the command-line tool has no
         # .desktop file. CMake writes warnings to stderr, which is captured to check and then
-        # passed through.
+        # passed through. A first configure with an empty vendor checks the configuration of a
+        # package that names no publisher; the cache keeps the variable, so the second names it.
         cmake = CMake(self)
+        cmake.configure(variables={"PACKAGE_BUILDER_TEST_VENDOR": ""})
         stderr = StringIO()
-        cmake.configure(stderr=stderr)
+        cmake.configure(variables={"PACKAGE_BUILDER_TEST_VENDOR": "Test Vendor"}, stderr=stderr)
         sys.stderr.write(stderr.getvalue())
         if "PRIMARY_TARGET is not set" in stderr.getvalue():
             raise ConanException("The configure warned that the package lacks a PRIMARY_TARGET.")

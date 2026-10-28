@@ -18,9 +18,13 @@ message(STATUS "PackageBuilder module was successfully found and included.")
 # no Start Menu entry or desktop shortcut. conanfile.py checks that the configure warns about
 # neither, that the archive holds the app, the tool and the MSVC C++ runtime and not the game, and
 # that the app's and tool's runtime dependencies install in Runtime while the game's stay in Game.
+# conanfile.py also configures once with an empty vendor, the same path as passing no VENDOR.
+set(PACKAGE_BUILDER_TEST_VENDOR
+    "Test Vendor"
+    CACHE STRING "The package's VENDOR; empty checks a package that names no publisher")
 package_create(
     VENDOR
-    "Test Vendor"
+    "${PACKAGE_BUILDER_TEST_VENDOR}"
     PRIMARY_TARGET
     test_app
     MENU_LINKS
@@ -69,10 +73,18 @@ function(_test_package_configuration)
     _test_expect("Runtime required" "${CPACK_COMPONENT_RUNTIME_REQUIRED}" "TRUE")
     _test_expect("file name" "${CPACK_PACKAGE_FILE_NAME}"
                  "PackageBuilderTest-1.0.0-${CPACK_SYSTEM_NAME}")
-    _test_expect("vendor" "${CPACK_PACKAGE_VENDOR}" "Test Vendor")
+    # Defined even when empty: an undefined vendor would take CPack's default, "Humanity".
+    if(NOT DEFINED CPACK_PACKAGE_VENDOR)
+        message(FATAL_ERROR "CPACK_PACKAGE_VENDOR is undefined, so CPack names a default vendor")
+    endif()
+    _test_expect("vendor" "${CPACK_PACKAGE_VENDOR}" "${PACKAGE_BUILDER_TEST_VENDOR}")
     if(WIN32)
-        _test_expect("install directory" "${CPACK_PACKAGE_INSTALL_DIRECTORY}"
-                     "Test Vendor\\Test App")
+        if(PACKAGE_BUILDER_TEST_VENDOR)
+            _test_expect("install directory" "${CPACK_PACKAGE_INSTALL_DIRECTORY}"
+                         "Test Vendor\\Test App")
+        else()
+            _test_expect("install directory" "${CPACK_PACKAGE_INSTALL_DIRECTORY}" "Test App")
+        endif()
         _test_expect("registry key" "${CPACK_PACKAGE_INSTALL_REGISTRY_KEY}" "Test App")
 
         # Only the GUI app gets a Start Menu entry: the console tool gets none, and nothing of the
@@ -81,10 +93,14 @@ function(_test_package_configuration)
         _test_expect("menu links" "${CPACK_NSIS_MENU_LINKS}"
                      "bin/guide.html;Test Guide;https://example.com/tool;Test Tool Website")
 
-        # The uninstaller removes the vendor folder it created once it is empty.
+        # The uninstaller removes the vendor folder it created once it is empty, and with no vendor
+        # never touches the install directory's parent.
         string(FIND "${CPACK_NSIS_DELETE_ICONS_EXTRA}" "RMDir \"$INSTDIR\\..\"" _found)
-        if(_found EQUAL -1)
+        if(PACKAGE_BUILDER_TEST_VENDOR AND _found EQUAL -1)
             message(FATAL_ERROR "the uninstaller keeps the vendor folder:\n"
+                                "${CPACK_NSIS_DELETE_ICONS_EXTRA}")
+        elseif(NOT PACKAGE_BUILDER_TEST_VENDOR AND NOT _found EQUAL -1)
+            message(FATAL_ERROR "the uninstaller removes the parent of a vendor-less install:\n"
                                 "${CPACK_NSIS_DELETE_ICONS_EXTRA}")
         endif()
 
