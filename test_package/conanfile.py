@@ -46,3 +46,22 @@ class CMakePackageBuilderTestConan(ConanFile):
             raise ConanException(f"The archive lacks the listed tool: {names}")
         if any("test-game" in name for name in names):
             raise ConanException(f"The archive holds the unlisted game: {names}")
+
+        # Neither executable links a library the resolver keeps, so the archive cannot show where
+        # their dependencies go; the install script names the component of each dependency rule.
+        # Each top-level block of it is one rule, guarded by the component it belongs to. The
+        # listed tool's dependencies go to Runtime, and the unlisted game's stay in Game.
+        script = (Path(self.build_folder) / "cmake_install.cmake").read_text()
+        rules = re.split(r'^if\(CMAKE_INSTALL_COMPONENT STREQUAL "', script, flags=re.MULTILINE)
+        dependency_components = {
+            executable: {
+                rule.split('"', 1)[0]
+                for rule in rules[1:]
+                if "GET_RUNTIME_DEPENDENCIES" in rule and executable in rule
+            }
+            for executable in ("test-game", "test-tool")
+        }
+        if dependency_components != {"test-game": {"Game"}, "test-tool": {"Runtime"}}:
+            raise ConanException(
+                f"Dependency rules are in the wrong components: {dependency_components}"
+            )

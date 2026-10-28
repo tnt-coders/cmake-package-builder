@@ -172,7 +172,7 @@ a build-time convenience only and is not exported to consumers.
 | `ICON`                 | Path to an icon file (`.ico`). On Windows, `package_add_executable()` embeds this into the executable and also uses it as the NSIS installer/uninstaller icon. Changing the icon re-runs CMake; that is how the compiled resource learns of it. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_DESKTOP_FILE`   | Path to an XDG `.desktop` file. Installed to `share/applications` on Linux for desktop launcher integration. Paths may be relative to the calling `CMakeLists.txt`. |
 | `LINUX_ICON_THEME_DIR` | Path to a directory containing a Linux icon theme subtree such as `hicolor/256x256/apps/myapp.png`. Installed to `share/icons` on Linux. Paths may be relative to the calling `CMakeLists.txt`. |
-| `COMPONENT`            | The install component that carries the executable, its runtime dependencies, and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
+| `COMPONENT`            | The install component that carries the executable and its Linux launcher entry and icons. Defaults to `Runtime`. See [Install components](#install-components). |
 | `MENU_LINKS`           | Extra Windows Start Menu links that ship with the executable: `<path> <label>` pairs, where `<path>` is relative to the install directory or is a URL. |
 
 All other arguments after the target name are forwarded to `add_executable()` as source files.
@@ -273,11 +273,14 @@ PackageBuilder assigns every install artifact to one of two CPack components:
 
 | Component | Contents |
 |-----------|----------|
-| `Runtime` | Executables, macOS app bundles, shared libraries, and their runtime dependencies |
+| `Runtime` | Executables, macOS app bundles, shared libraries, and the runtime dependencies of every packaged target |
 | `Development` | Static libraries, public headers, CMake package metadata (exported targets, config/version files, custom modules) |
 
 A runtime target registered with `COMPONENT <name>` goes to that component instead of `Runtime`,
-together with its runtime dependencies and its Linux `.desktop` file and icons. Registration records
+together with its Linux `.desktop` file and icons. Its runtime dependencies go to `Runtime` while
+`<name>` is packaged, so a library two packaged executables both need is one file of `Runtime`
+rather than a file of each executable's component; while `<name>` is not packaged they stay in
+`<name>`, so none of them ship. Registration records
 every runtime target's component, `Runtime` included, as its `PACKAGE_BUILDER_COMPONENT` property,
 so a project's own install rules for files that belong to one executable can read it rather than
 restate it:
@@ -289,7 +292,9 @@ get_target_property(_game_component my_game PACKAGE_BUILDER_COMPONENT)
 install(DIRECTORY levels/ DESTINATION ${CMAKE_INSTALL_BINDIR}/levels COMPONENT ${_game_component})
 ```
 
-`PACKAGE_BUILDER_CPACK_COMPONENTS` lists the components the generated packages carry. Every
+`PACKAGE_BUILDER_CPACK_COMPONENTS` lists the components the generated packages carry, and must
+include `Runtime` whenever it lists the component of a runtime target registered with another
+`COMPONENT`, since `Runtime` then carries that target's runtime dependencies. Every
 generator honours it: the ZIP and DEB generators run in component mode with all listed components
 grouped into one package, so each still produces one file named `<PROJECT_NAME>-<version>-<os>-<arch>`.
 A component left off the list ships in no package, while its targets still build and its install

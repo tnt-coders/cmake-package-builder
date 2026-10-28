@@ -14,7 +14,8 @@ message(STATUS "PackageBuilder module was successfully found and included.")
 # A two-executable sample whose component list leaves the game out, so the package carries the
 # tool alone, with the tool's Start Menu links and not the game's. The package names no
 # PRIMARY_TARGET, so the tool, its only packaged executable, is the primary one. conanfile.py checks
-# that the configure does not warn about it and that the archive holds the tool and not the game.
+# that the configure does not warn about it, that the archive holds the tool and not the game, and
+# that the tool's runtime dependencies install in Runtime while the game's stay in Game.
 package_create(VENDOR "Test Vendor")
 
 foreach(_name IN ITEMS game tool)
@@ -70,6 +71,7 @@ _test_expect("tool component" "${_tool_component}" "Tool")
 function(_test_package_configuration)
     include("${CMAKE_BINARY_DIR}/CPackConfig.cmake")
     _test_expect("components" "${CPACK_COMPONENTS_ALL}" "Runtime;Tool")
+    _test_expect("Runtime required" "${CPACK_COMPONENT_RUNTIME_REQUIRED}" "TRUE")
     _test_expect("file name" "${CPACK_PACKAGE_FILE_NAME}"
                  "PackageBuilderTest-1.0.0-${CPACK_SYSTEM_NAME}")
     _test_expect("vendor" "${CPACK_PACKAGE_VENDOR}" "Test Vendor")

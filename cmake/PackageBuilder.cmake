@@ -369,21 +369,35 @@ endfunction()
 # component not listed are then excluded from every generated package.
 #
 # PackageBuilder defines two components. The Runtime component holds executables, macOS app bundles,
-# shared libraries, and their transitive runtime dependencies — everything an end user needs to run
-# the application. The Development component holds static libraries, public headers, CMake exported
-# target definitions, and generated package config files — everything needed to compile against this
-# project as a library. A runtime target registered with COMPONENT <name> puts its runtime artifacts,
-# their dependencies, and its Linux launcher entry in that component instead of Runtime.
+# shared libraries, and the transitive runtime dependencies of every packaged target — everything an
+# end user needs to run the application. The Development component holds static libraries, public
+# headers, CMake exported target definitions, and generated package config files — everything
+# needed to compile against this project as a library. A runtime target registered with
+# COMPONENT <name> puts its runtime artifacts and its Linux launcher entry in that component instead
+# of Runtime; its dependencies follow it there only while that component is not packaged.
 #
 # By default, CPACK_COMPONENTS_ALL is Runtime plus every registered COMPONENT, so generated
 # installers ship what end users need. To choose the list, set PACKAGE_BUILDER_CPACK_COMPONENTS
 # before calling package_install(): "Runtime Development" also ships development files, and leaving
-# a COMPONENT out keeps that target's files out of every package while it still builds.
+# a COMPONENT out keeps that target's files out of every package while it still builds. A packaged
+# target's runtime dependencies ship in Runtime, so a list that packages a COMPONENT must name
+# Runtime too.
 function(package_install)
     _package_check_initialized()
 
     get_property(targets GLOBAL PROPERTY ${PROJECT_NAME}_TARGETS)
     _package_collect_runtime_targets(runtime_targets ${targets})
+
+    # The components the generated packages carry. The install rules below read the list too: a
+    # packaged target's runtime dependencies go to Runtime.
+    if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS)
+        set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime)
+        foreach(rt_target IN LISTS runtime_targets)
+            get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
+            list(APPEND PACKAGE_BUILDER_CPACK_COMPONENTS ${_component})
+        endforeach()
+        list(REMOVE_DUPLICATES PACKAGE_BUILDER_CPACK_COMPONENTS)
+    endif()
 
     # Set the install destination and namespace
     set(install_destination "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
@@ -493,16 +507,33 @@ function(package_install)
                 # Each RUNTIME_DEPENDENCY_SET declared in Group B must have a matching
                 # install(RUNTIME_DEPENDENCY_SET ...) call. CMake resolves the transitive shared
                 # library dependencies of the target at install time and copies them to DESTINATION,
-                # applying the exclude filters to skip system-provided libraries. The dependencies
-                # ship with the target, so they share its component.
+                # applying the exclude filters to skip system-provided libraries.
+                #
+                # A packaged target's dependencies go to Runtime. CPack stages each component on its
+                # own, so a library two packaged executables both need, left in each executable's
+                # component, would be a file of both: written by two NSIS sections, and deleted
+                # by either one's removal while the other still needs it. An unpackaged target's
+                # dependencies stay in its own component, so none of them ship.
                 # -----------------------------------------------------------
+                set(_dependency_component ${_component})
+                if(_component IN_LIST PACKAGE_BUILDER_CPACK_COMPONENTS)
+                    if(NOT "Runtime" IN_LIST PACKAGE_BUILDER_CPACK_COMPONENTS)
+                        message(
+                            FATAL_ERROR
+                                "PackageBuilder: '${rt_target}' is packaged in ${_component} and "
+                                "its runtime dependencies ship in Runtime, which "
+                                "PACKAGE_BUILDER_CPACK_COMPONENTS lacks: "
+                                "${PACKAGE_BUILDER_CPACK_COMPONENTS}")
+                    endif()
+                    set(_dependency_component Runtime)
+                endif()
                 install(
                     RUNTIME_DEPENDENCY_SET
                     ${_dep_set}
                     DESTINATION
                     ${CMAKE_INSTALL_BINDIR}
                     COMPONENT
-                    ${_component}
+                    ${_dependency_component}
                     PRE_EXCLUDE_REGEXES
                     ${_pre_exclude_regexes}
                     POST_EXCLUDE_REGEXES
@@ -619,19 +650,9 @@ function(package_install)
 
     # CPACK_COMPONENTS_ALL tells CPack which component buckets to include in the generated
     # installer. Only install() rules tagged with one of these components will be packaged.
-    #
-    # Default: Runtime plus every registered COMPONENT — release installers ship app executables
-    # and shared libraries but not headers, static libs, or CMake package metadata. Set
-    # PACKAGE_BUILDER_CPACK_COMPONENTS before calling package_install() to choose the list.
-    if(NOT DEFINED PACKAGE_BUILDER_CPACK_COMPONENTS)
-        set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime)
-        foreach(rt_target IN LISTS runtime_targets)
-            get_target_property(_component ${rt_target} PACKAGE_BUILDER_COMPONENT)
-            list(APPEND PACKAGE_BUILDER_CPACK_COMPONENTS ${_component})
-        endforeach()
-        list(REMOVE_DUPLICATES PACKAGE_BUILDER_CPACK_COMPONENTS)
-    endif()
     set(CPACK_COMPONENTS_ALL ${PACKAGE_BUILDER_CPACK_COMPONENTS})
+    # Runtime holds the dependencies every packaged executable loads, so no installer may drop it.
+    set(CPACK_COMPONENT_RUNTIME_REQUIRED TRUE)
 
     # The archive and DEB generators install every component unless they run in component mode;
     # grouping all listed components into one package keeps one package per generator, named
