@@ -27,14 +27,14 @@ Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/2.0.0") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.0.1") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/2.0.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.0.1 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -64,7 +64,7 @@ include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
     GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v2.0.0
+    GIT_TAG v2.0.1
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
