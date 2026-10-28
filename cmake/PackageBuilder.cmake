@@ -243,10 +243,20 @@ function(package_write_resource_script out_var target)
                "        VALUE \"Translation\", 0x409, 1200\n"
                "    END\n"
                "END\n")
-    # Registration already made the icon path absolute.
+    # Registration already made the icon path absolute. CMake learns a resource script's dependencies
+    # by preprocessing it, so it records the files the script #includes and never one an ICON
+    # statement names. The icon is therefore a configure dependency and its hash is written into the
+    # script: a changed icon rewrites the script, which both kinds of consumer rebuild on, the one
+    # that compiles it and the one that includes it.
     get_target_property(_icon ${target} PACKAGE_BUILDER_ICON)
     if(_icon)
-        string(APPEND _rc_content "IDI_ICON1 ICON \"${_icon}\"\n")
+        set_property(
+            DIRECTORY
+            APPEND
+            PROPERTY CMAKE_CONFIGURE_DEPENDS "${_icon}")
+        file(SHA256 "${_icon}" _icon_hash)
+        string(APPEND _rc_content "// Icon SHA-256: ${_icon_hash}\n"
+               "IDI_ICON1 ICON \"${_icon}\"\n")
     endif()
     set(_rc_file "${CMAKE_CURRENT_BINARY_DIR}/${target}_resources.rc")
     file(CONFIGURE OUTPUT "${_rc_file}" CONTENT "${_rc_content}" @ONLY)
