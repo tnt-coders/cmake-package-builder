@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   linux:
-    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@v1.0.5
+    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@v1.0.6
     with:
       os: ubuntu-latest
       test-package: true
