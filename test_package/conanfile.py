@@ -23,12 +23,24 @@ class CMakePackageBuilderTestConan(ConanFile):
         # The sample names the GUI app as its PRIMARY_TARGET, so the configure must not warn that
         # the package lacks one; nor, on Linux, that the app or the command-line tool has no
         # .desktop file. CMake writes warnings to stderr, which is captured to check and then
-        # passed through. A first configure with an empty vendor checks the configuration of a
-        # package that names no publisher; the cache keeps the variable, so the second names it.
+        # passed through. A first configure with an empty vendor and no tool checks the
+        # configuration of a package that names no publisher and holds the GUI app alone; the cache
+        # keeps both variables, so the second sets them back.
         cmake = CMake(self)
-        cmake.configure(variables={"PACKAGE_BUILDER_TEST_VENDOR": ""})
+        cmake.configure(
+            variables={
+                "PACKAGE_BUILDER_TEST_VENDOR": "",
+                "PACKAGE_BUILDER_TEST_COMPONENTS": "Runtime",
+            }
+        )
         stderr = StringIO()
-        cmake.configure(variables={"PACKAGE_BUILDER_TEST_VENDOR": "Test Vendor"}, stderr=stderr)
+        cmake.configure(
+            variables={
+                "PACKAGE_BUILDER_TEST_VENDOR": "Test Vendor",
+                "PACKAGE_BUILDER_TEST_COMPONENTS": "Runtime;Tool",
+            },
+            stderr=stderr,
+        )
         sys.stderr.write(stderr.getvalue())
         if "PRIMARY_TARGET is not set" in stderr.getvalue():
             raise ConanException("The configure warned that the package lacks a PRIMARY_TARGET.")
@@ -38,7 +50,8 @@ class CMakePackageBuilderTestConan(ConanFile):
 
     # The configure checks the package configuration; this checks the archive CPack stages from
     # it: one file named CPACK_PACKAGE_FILE_NAME, holding the listed app and tool and not the
-    # unlisted game, and with a dynamically linked MSVC runtime, that runtime beside them.
+    # unlisted game, and with a dynamically linked MSVC runtime, that runtime beside them. On
+    # Windows it also compiles the one-click installer.
     def test(self):
         self.run(f"cpack -G ZIP -C {self.settings.build_type}", cwd=self.build_folder)
         archives = list(Path(self.build_folder).glob("*.zip"))
@@ -61,6 +74,16 @@ class CMakePackageBuilderTestConan(ConanFile):
             for runtime in ("msvcp140.dll", "vcruntime140.dll"):
                 if not any(name.endswith(f"bin/{runtime}") for name in names):
                     raise ConanException(f"The archive lacks the C++ runtime's {runtime}: {names}")
+
+        # Only makensis checks the one-click installer's template and the PATH plugin it loads, so
+        # the test compiles the installer.
+        if self.settings.os == "Windows":
+            self.run(f"cpack -G NSIS -C {self.settings.build_type}", cwd=self.build_folder)
+            installers = list(Path(self.build_folder).glob("PackageBuilderTest-1.0.0-*.exe"))
+            if len(installers) != 1:
+                raise ConanException(
+                    f"Expected one PackageBuilderTest installer, found {installers}."
+                )
 
         # No executable links a library the resolver keeps, so the archive cannot show where their
         # dependencies go; the install script names the component of each dependency rule. Each

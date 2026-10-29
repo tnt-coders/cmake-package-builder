@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 # Specify CXX as the language even though it is purely CMake to make cmake-conan happy
 project(
     PackageBuilder
-    VERSION 2.0.5
+    VERSION 2.1.0
     DESCRIPTION "Tools to assist with CMake/C++ package development"
     LANGUAGES C CXX)
 
@@ -39,3 +39,10 @@ endif()
 include(PackageBuilder)
 package_create()
 package_install()
+
+# package_install() installs the modules and templates of cmake/; the NSIS plugins the one-click
+# template loads are PackageBuilder's own.
+install(
+    DIRECTORY "${PROJECT_SOURCE_DIR}/cmake/NSIS/Plugins"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/NSIS"
+    COMPONENT Development)

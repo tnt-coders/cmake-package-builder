@@ -15,13 +15,17 @@ message(STATUS "PackageBuilder module was successfully found and included.")
 # GUI app and the command-line tool, beside the package's Start Menu links. The app is the
 # PRIMARY_TARGET, so it names the package and gets the desktop shortcut. The tool has no .desktop
 # file, which is no reason to warn on Linux, and on Windows it is a console executable, so it gets
-# no Start Menu entry or desktop shortcut. conanfile.py checks that the configure warns about
-# neither, that the archive holds the app, the tool and the MSVC C++ runtime and not the game, and
-# that the app's and tool's runtime dependencies install in Runtime while the game's stay in Game.
-# conanfile.py also configures once with an empty vendor, the same path as passing no VENDOR.
+# no Start Menu entry or desktop shortcut, but puts the bin directory on PATH. conanfile.py checks
+# that the configure warns about neither, that the archive holds the app, the tool and the MSVC C++
+# runtime and not the game, that the app's and tool's runtime dependencies install in Runtime while
+# the game's stay in Game, and on Windows that the one-click installer compiles. conanfile.py also
+# configures once with an empty vendor, the same path as passing no VENDOR, and without the tool.
 set(PACKAGE_BUILDER_TEST_VENDOR
     "Test Vendor"
     CACHE STRING "The package's VENDOR; empty checks a package that names no publisher")
+set(PACKAGE_BUILDER_TEST_COMPONENTS
+    "Runtime;Tool"
+    CACHE STRING "The packaged components; Runtime alone checks a package of the GUI app only")
 package_create(
     VENDOR
     "${PACKAGE_BUILDER_TEST_VENDOR}"
@@ -52,7 +56,7 @@ set_target_properties(test_app PROPERTIES OUTPUT_NAME test-app)
 # The GUI subsystem defaults to a WinMain entry; keep the shared plain main() under MSVC.
 target_link_options(test_app PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/ENTRY:mainCRTStartup>)
 
-set(PACKAGE_BUILDER_CPACK_COMPONENTS Runtime Tool)
+set(PACKAGE_BUILDER_CPACK_COMPONENTS ${PACKAGE_BUILDER_TEST_COMPONENTS})
 package_install()
 
 function(_test_expect what actual expected)
@@ -69,7 +73,7 @@ _test_expect("tool component" "${_tool_component}" "Tool")
 # Reads the generated CPack configuration in a scope of its own and checks the package it describes.
 function(_test_package_configuration)
     include("${CMAKE_BINARY_DIR}/CPackConfig.cmake")
-    _test_expect("components" "${CPACK_COMPONENTS_ALL}" "Runtime;Tool")
+    _test_expect("components" "${CPACK_COMPONENTS_ALL}" "${PACKAGE_BUILDER_TEST_COMPONENTS}")
     _test_expect("Runtime required" "${CPACK_COMPONENT_RUNTIME_REQUIRED}" "TRUE")
     _test_expect("file name" "${CPACK_PACKAGE_FILE_NAME}"
                  "PackageBuilderTest-1.0.0-${CPACK_SYSTEM_NAME}")
@@ -113,6 +117,19 @@ function(_test_package_configuration)
         string(TOLOWER "${_shortcuts}" _shortcuts_lower)
         if(_shortcuts_lower MATCHES "test tool|game")
             message(FATAL_ERROR "shortcuts name the tool or the unlisted game:\n${_shortcuts}")
+        endif()
+
+        # The packaged tool puts the bin directory on PATH, through the plugin the installed
+        # PackageBuilder carries; the GUI app alone leaves PATH alone.
+        if("Tool" IN_LIST PACKAGE_BUILDER_TEST_COMPONENTS)
+            _test_expect("PATH modification" "${CPACK_NSIS_MODIFY_PATH}" "ON")
+        else()
+            _test_expect("PATH modification" "${CPACK_NSIS_MODIFY_PATH}" "OFF")
+        endif()
+        _test_expect("bin directory" "${CPACK_PACKAGE_BUILDER_NSIS_BINDIR}" "bin")
+        if(NOT EXISTS "${CPACK_PACKAGE_BUILDER_NSIS_PLUGIN_DIR}/x86-unicode/EnVar.dll")
+            message(FATAL_ERROR "the one-click template's EnVar plugin is missing from "
+                                "${CPACK_PACKAGE_BUILDER_NSIS_PLUGIN_DIR}")
         endif()
     endif()
 endfunction()
