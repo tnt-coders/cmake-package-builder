@@ -1,9 +1,9 @@
 # PackageBuilder
 
-[![Build - Windows](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-windows.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-windows.yml)
-[![Build - Linux](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-linux.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-linux.yml)
-[![Build - macOS](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-macos.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/build-macos.yml)
-[![Docs](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/docs.yml/badge.svg)](https://github.com/tnt-coders/cmake-package-builder/actions/workflows/docs.yml)
+[![Build - Windows](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-windows.yml/badge.svg)](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-windows.yml)
+[![Build - Linux](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-linux.yml/badge.svg)](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-linux.yml)
+[![Build - macOS](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-macos.yml/badge.svg)](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/build-macos.yml)
+[![Docs](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/docs.yml/badge.svg)](https://github.com/TNT-Music-Studios/cmake-package-builder/actions/workflows/docs.yml)
 
 **Tired of writing hundreds of lines of CMake boilerplate just to create a properly installable library?** Build sleek, professional C++ libraries and executables with a few simple function calls. Installation and package config generation all handled automatically.
 
@@ -21,20 +21,20 @@
 
 ### Method 1: Conan via cmake-conan (Preferred)
 
-If your project uses [cmake-conan](https://github.com/tnt-coders/cmake-conan) (the tnt-coders fork), this is the recommended way to consume PackageBuilder. Dependencies are resolved automatically with no manual installation.
+If your project uses [cmake-conan](https://github.com/TNT-Music-Studios/cmake-conan) (the TNT Music Studios fork), this is the recommended way to consume PackageBuilder. Dependencies are resolved automatically with no manual installation.
 
 Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/2.0.4") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.0.5") #recipe: https://github.com/TNT-Music-Studios/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/2.0.4 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.0.5 #recipe: https://github.com/TNT-Music-Studios/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -50,7 +50,8 @@ find_package(PackageBuilder REQUIRED)
 include(PackageBuilder)
 ```
 
-For full details on how cmake-conan and the recipe tag work, see the tnt-coders fork of the [cmake-conan](https://github.com/tnt-coders/cmake-conan) repository.
+For full details on how cmake-conan and the recipe tag work, see the TNT Music Studios fork of the
+[cmake-conan](https://github.com/TNT-Music-Studios/cmake-conan) repository.
 
 ### Method 2: FetchContent (Simplest)
 
@@ -63,8 +64,8 @@ project(MyProject LANGUAGES CXX)
 include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
-    GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v2.0.4
+    GIT_REPOSITORY https://github.com/TNT-Music-Studios/cmake-package-builder
+    GIT_TAG v2.0.5
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
@@ -85,7 +86,7 @@ Build and install PackageBuilder to your system, then find it like any other CMa
 **Install:**
 
 ```
-git clone https://github.com/tnt-coders/cmake-package-builder
+git clone https://github.com/TNT-Music-Studios/cmake-package-builder
 cd cmake-package-builder
 cmake -B build -DINCLUDE_PROJECT_CONFIG=OFF
 cmake --install build
@@ -625,6 +626,9 @@ Start Menu entry or default desktop shortcut, which only opened a console window
 2.0.4 is one too: a package without a `VENDOR` names no publisher, where it showed CPack's default
 "Humanity" as its Windows publisher and registry folder, and the one-click installer no longer
 writes a `Software\<vendor>\<DISPLAY_NAME>` registry key that nothing read.
+
+2.0.5 changes no behavior: the project moved to the TNT-Music-Studios organization, so its
+recipe URL, its project-config submodule and its CI now point there.
 
 Before 2.0.0, two minor releases broke existing builds:
 
