@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   windows:
-    uses: TNT-Music-Studios/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@master
+    uses: tnt-music-studios/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@master
     with:
       os: windows-latest
       test-package: true

@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   docs:
-    uses: TNT-Music-Studios/ci-workflows/.github/workflows/cpp-cmake-conan-docs.yml@master
+    uses: tnt-music-studios/ci-workflows/.github/workflows/cpp-cmake-conan-docs.yml@master
     permissions:
       contents: read
       pages: write

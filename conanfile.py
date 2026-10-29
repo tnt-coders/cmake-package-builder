@@ -6,7 +6,7 @@ class CMakePackageBuilderConan(ConanFile):
     name = "cmake-package-builder"
     license = "MIT"
     author = "TNT Music Studios <tntmusicstudios2018@gmail.com>"
-    url = "https://github.com/TNT-Music-Studios/cmake-package-builder"
+    url = "https://github.com/tnt-music-studios/cmake-package-builder"
     description = "CMake utility functions for simplified project setup/installation"
     package_type = "build-scripts"
     settings = "os", "compiler", "build_type", "arch"
