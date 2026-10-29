@@ -27,14 +27,14 @@ Add the following to your `conanfile.py`:
 
 ```python
 def requirements(self):
-    self.requires("cmake-package-builder/2.0.4") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+    self.requires("cmake-package-builder/2.1.0") #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 ```
 
 Or in `conanfile.txt`:
 
 ```ini
 [requires]
-cmake-package-builder/2.0.4 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
+cmake-package-builder/2.1.0 #recipe: https://github.com/tnt-coders/cmake-package-builder.git
 
 [generators]
 CMakeDeps
@@ -64,7 +64,7 @@ include(FetchContent)
 FetchContent_Declare(
     PackageBuilder
     GIT_REPOSITORY https://github.com/tnt-coders/cmake-package-builder
-    GIT_TAG v2.0.4
+    GIT_TAG v2.1.0
 )
 FetchContent_MakeAvailable(PackageBuilder)
 
@@ -372,7 +372,11 @@ without a `.desktop` file gets no launcher entry. A GUI program that still links
 application (some SDL games) counts as one too: set its `WIN32_EXECUTABLE` to `TRUE`, with
 `/ENTRY:mainCRTStartup` under MSVC to keep a plain `main()`, or keep its console and give it a
 `MENU_LINKS` entry. A command-line tool that should still appear in the Start Menu takes a
-[`MENU_LINKS`](#start-menu-links) entry, such as `MENU_LINKS "bin/my-tool.exe" "My Tool"`.
+[`MENU_LINKS`](#start-menu-links) entry, such as `MENU_LINKS "bin/my-tool.exe" "My Tool"`; a
+one-click package with neither a GUI executable nor a `MENU_LINKS` entry gets no Start Menu
+folder, and reaches its command-line tools through PATH instead (see
+[Windows one-click installer](#windows-one-click-installer)). The one-click installer adds no
+Uninstall shortcut: Windows uninstalls a package from *Apps & features*.
 
 Desktop shortcuts (Windows) go to the package's `PRIMARY_TARGET` by default when it is a GUI
 executable; pass `DESKTOP_LINKS` to `package_create()` to choose the GUI executables that receive
@@ -449,6 +453,13 @@ options page (PATH and an opt-in desktop shortcut checkbox), Directory, Start Me
 In both modes, an installer that finds an earlier installation under the same registry key first
 asks whether to uninstall it.
 
+The one-click installer has no page to ask about PATH, so the package decides: when it holds a
+[command-line tool](#desktop-shortcuts-and-launchers), the installer adds its `bin` directory to
+the machine PATH, where a console finds the tool by name, and the uninstaller removes it again. A
+package of GUI executables alone leaves PATH alone. PATH is edited with the
+[EnVar](https://github.com/GsNSIS/EnVar) NSIS plugin (v0.3.1, zlib licence), which PackageBuilder
+carries in `cmake/NSIS/Plugins/`.
+
 ```cmake
 # Default: zero-interaction installer (user just double-clicks)
 # set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
@@ -460,7 +471,7 @@ package_install()
 
 | Mode | Desktop shortcut | PATH modification | Wizard pages |
 |------|-----------------|-------------------|--------------|
-| `ON` (default) | Created for the `DESKTOP_LINKS` targets without asking | Never added to PATH | None, only install progress |
+| `ON` (default) | Created for the `DESKTOP_LINKS` targets without asking | `bin` added to the machine PATH when the package holds a command-line tool | None, only install progress |
 | `OFF` | Opt-in checkbox during install | User-controlled via installer page | Welcome, License, options, Directory, Start Menu, Components, Finish |
 
 #### Providing a custom NSIS template
@@ -483,7 +494,11 @@ PackageBuilder's lookup order for `NSIS.template.in` (highest to lowest priority
 A custom template must expand `@CPACK_NSIS_DELETE_ICONS_EXTRA@` after its uninstaller removes
 `$INSTDIR`, as PackageBuilder's template and CMake's both do: PackageBuilder removes the one-click
 desktop shortcuts and the empty vendor folder through it. In one-click mode it must also expand
-`@CPACK_NSIS_CREATE_ICONS_EXTRA@`, through which PackageBuilder creates the desktop shortcuts.
+`@CPACK_NSIS_CREATE_ICONS_EXTRA@`, through which PackageBuilder creates the desktop shortcuts, and
+add `$INSTDIR\@CPACK_PACKAGE_BUILDER_NSIS_BINDIR@` to PATH when `@CPACK_NSIS_MODIFY_PATH@` is `ON`,
+and remove it again on uninstall;
+`@CPACK_PACKAGE_BUILDER_NSIS_PLUGIN_DIR@` names the directory holding PackageBuilder's EnVar plugin
+for `!addplugindir`, as its own template does.
 
 ### Including development components
 
@@ -625,6 +640,12 @@ Start Menu entry or default desktop shortcut, which only opened a console window
 2.0.4 is one too: a package without a `VENDOR` names no publisher, where it showed CPack's default
 "Humanity" as its Windows publisher and registry folder, and the one-click installer no longer
 writes a `Software\<vendor>\<DISPLAY_NAME>` registry key that nothing read.
+
+2.1.0 changes what the one-click installer does on Windows, with nothing to change in a consuming
+project: a package that holds a command-line tool adds its `bin` directory to the machine PATH (see
+[Windows one-click installer](#windows-one-click-installer)), and a package with no Start Menu
+entry no longer leaves a Start Menu folder holding only an Uninstall shortcut, which the one-click
+installer no longer creates. The one-click installer is now a Unicode NSIS installer.
 
 Before 2.0.0, two minor releases broke existing builds:
 

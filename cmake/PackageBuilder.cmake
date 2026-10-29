@@ -692,19 +692,12 @@ function(package_install)
     if(WIN32)
         set(CPACK_GENERATOR "ZIP;NSIS")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-        # In one-click mode the InstallOptions page (which let the user toggle $DO_NOT_ADD_TO_PATH)
-        # is removed. Setting MODIFY_PATH OFF prevents the installer from silently adding the
-        # install directory to PATH on every install. In checkbox mode the page is present and the
-        # user controls this, so the default ON applies.
         if(NOT DEFINED PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
             set(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER ON)
         endif()
-
-        if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-            set(CPACK_NSIS_MODIFY_PATH OFF)
-        else()
-            set(CPACK_NSIS_MODIFY_PATH ON)
-        endif()
+        # The bin directory as the installer spells it under $INSTDIR, for the shortcuts, the
+        # installed icon and the PATH entry.
+        string(REPLACE "/" "\\" CPACK_PACKAGE_BUILDER_NSIS_BINDIR "${CMAKE_INSTALL_BINDIR}")
 
         # -------------------------------------------------------------------
         # Collect packaged executables: those whose component is listed. An unlisted executable
@@ -779,9 +772,8 @@ function(package_install)
             set(CPACK_NSIS_MUI_ICON "${_pkg_icon}")
             set(CPACK_NSIS_MUI_UNIICON "${_pkg_icon}")
             get_filename_component(_pkg_icon_filename "${_pkg_icon}" NAME)
-            string(REPLACE "/" "\\" _nsis_installed_icon
-                           "${CMAKE_INSTALL_BINDIR}/${_pkg_icon_filename}")
-            set(CPACK_NSIS_INSTALLED_ICON_NAME "${_nsis_installed_icon}")
+            set(CPACK_NSIS_INSTALLED_ICON_NAME
+                "${CPACK_PACKAGE_BUILDER_NSIS_BINDIR}\\${_pkg_icon_filename}")
             install(
                 FILES "${_pkg_icon}"
                 DESTINATION "${CMAKE_INSTALL_BINDIR}"
@@ -792,9 +784,8 @@ function(package_install)
                 set(CPACK_NSIS_MUI_ICON "${_primary_icon}")
                 set(CPACK_NSIS_MUI_UNIICON "${_primary_icon}")
                 _package_get_output_name(_primary_output_name ${_primary_target})
-                string(REPLACE "/" "\\" _nsis_installed_icon
-                               "${CMAKE_INSTALL_BINDIR}/${_primary_output_name}.exe")
-                set(CPACK_NSIS_INSTALLED_ICON_NAME "${_nsis_installed_icon}")
+                set(CPACK_NSIS_INSTALLED_ICON_NAME
+                    "${CPACK_PACKAGE_BUILDER_NSIS_BINDIR}\\${_primary_output_name}.exe")
             endif()
         endif()
 
@@ -806,12 +797,27 @@ function(package_install)
         # counts as true, the usual one keeping a console for Debug builds alone.
         # -------------------------------------------------------------------
         set(_gui_exe_targets)
+        set(_has_command_line_tool OFF)
         foreach(rt_target IN LISTS _exe_targets)
             get_target_property(_win32_executable ${rt_target} WIN32_EXECUTABLE)
             if(_win32_executable)
                 list(APPEND _gui_exe_targets ${rt_target})
+            else()
+                set(_has_command_line_tool ON)
             endif()
         endforeach()
+
+        # -------------------------------------------------------------------
+        # PATH: the one-click installer has no page to ask on, so the package decides. A
+        # command-line tool is run by name from a console, so a package holding one adds its bin
+        # directory to the machine PATH; a GUI-only package leaves PATH alone. The classic wizard's
+        # options page lets the user choose.
+        # -------------------------------------------------------------------
+        if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
+            set(CPACK_NSIS_MODIFY_PATH ${_has_command_line_tool})
+        else()
+            set(CPACK_NSIS_MODIFY_PATH ON)
+        endif()
 
         # -------------------------------------------------------------------
         # Build the Start Menu: CPACK_PACKAGE_EXECUTABLES gives each packaged GUI executable an
@@ -875,11 +881,10 @@ function(package_install)
         # -------------------------------------------------------------------
         set(CPACK_PACKAGE_EXECUTABLES ${_cpack_executables})
         if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
-            string(REPLACE "/" "\\" _nsis_bindir "${CMAKE_INSTALL_BINDIR}")
             foreach(_exe_name _label IN ZIP_LISTS _cpack_desktop_links _cpack_desktop_link_labels)
                 string(APPEND CPACK_NSIS_CREATE_ICONS_EXTRA
                        "CreateShortCut \"$DESKTOP\\${_label}.lnk\""
-                       " \"$INSTDIR\\${_nsis_bindir}\\${_exe_name}.exe\"\n  ")
+                       " \"$INSTDIR\\${CPACK_PACKAGE_BUILDER_NSIS_BINDIR}\\${_exe_name}.exe\"\n  ")
                 string(APPEND CPACK_NSIS_DELETE_ICONS_EXTRA
                        "Delete \"$DESKTOP\\${_label}.lnk\"\n  ")
             endforeach()
@@ -909,10 +914,13 @@ function(package_install)
         #   3. CMake's built-in template (the classic wizard)
         #
         # CMAKE_CURRENT_FUNCTION_LIST_DIR resolves to the directory containing PackageBuilder.cmake
-        # regardless of where package_install() is called from (requires CMake 3.17+).
+        # regardless of where package_install() is called from (requires CMake 3.17+). The
+        # one-click template loads its NSIS plugins from the plugin directory beside it.
         # -------------------------------------------------------------------
         if(PACKAGE_BUILDER_WINDOWS_ONE_CLICK_INSTALLER)
             list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NSIS")
+            file(TO_NATIVE_PATH "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NSIS/Plugins"
+                 CPACK_PACKAGE_BUILDER_NSIS_PLUGIN_DIR)
         endif()
         if(DEFINED PACKAGE_BUILDER_NSIS_TEMPLATE_DIR)
             list(PREPEND CMAKE_MODULE_PATH "${PACKAGE_BUILDER_NSIS_TEMPLATE_DIR}")
