@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   macos:
-    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@v1.0.4
+    uses: tnt-coders/ci-workflows/.github/workflows/cpp-cmake-conan-build.yml@v1.0.5
     with:
       os: macos-latest
       test-package: true
